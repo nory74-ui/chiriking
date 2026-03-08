@@ -86,43 +86,44 @@ const THEME_DEFS = {
   area: { id: 'area', name: '面積', unit: 'km²', icon: MapIcon, color: 'text-green-600' }
 };
 
-// 属性の安全な取得
+// 属性の安全な取得 (不正な値が渡された場合のフォールバック)
 const safeTheme = (theme) => ['population', 'area'].includes(theme) ? theme : 'population';
 
 // ==========================================
 // 2. UIコンポーネント
 // ==========================================
-const CardView = ({ card, activeThemes, faceDown, selectable, onClick, highlight, small, declaredName }) => {
+const CardView = ({ card, activeThemes, faceDown, selectable, onClick, highlight, size = 'large', declaredName }) => {
+  // SSRクラッシュを避けるため、window.innerWidthの代わりにsizeプロパティでCSSクラスを切り替え
+  const baseClasses = "rounded-xl shadow-lg border-2 flex flex-col items-center justify-between relative transition-all duration-200";
+  const sizeClasses = size === 'small' ? "w-12 h-16 sm:w-16 sm:h-24 p-1 sm:p-1.5" : "w-24 h-36 sm:w-32 sm:h-48 p-1.5 sm:p-2";
+  
   if (faceDown) {
     return (
-      <div className={`${small ? 'w-12 h-16 sm:w-16 sm:h-24' : 'w-24 h-36 sm:w-32 sm:h-48'} bg-emerald-900 rounded-xl shadow-xl border-2 border-emerald-400/30 flex flex-col items-center justify-center relative overflow-hidden text-white transition-transform hover:scale-105 cursor-default`}>
+      <div className={`${baseClasses} ${sizeClasses} bg-emerald-900 border-emerald-400/30 text-white hover:scale-105 cursor-default`}>
         <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-emerald-400 to-transparent" />
-        <div className="text-[10px] sm:text-[14px] font-black italic tracking-widest uppercase transform -rotate-45 opacity-50 mb-2 drop-shadow-md">ChiriKing</div>
+        <div className={`${size === 'small' ? 'text-[6px] sm:text-[8px]' : 'text-[10px] sm:text-[14px]'} font-black italic tracking-widest uppercase transform -rotate-45 opacity-50 mb-2 drop-shadow-md`}>ChiriKing</div>
         {declaredName && (
-          <div className="bg-red-600/90 border border-red-400 px-3 py-1 rounded-full text-[10px] sm:text-xs font-black text-white absolute bottom-3 whitespace-nowrap shadow-lg animate-pulse">{declaredName}</div>
+          <div className="bg-red-600/90 border border-red-400 px-2 py-0.5 rounded-full text-[7px] sm:text-[10px] font-black text-white absolute bottom-2 whitespace-nowrap shadow-lg animate-pulse">{declaredName}</div>
         )}
       </div>
     );
   }
+  
   if (!card) return null;
   const themes = (activeThemes || ['population', 'area']).map(id => THEME_DEFS[id]);
 
   return (
     <div 
       onClick={() => selectable && onClick && onClick(card)} 
-      className={`
-        ${small ? 'w-12 h-16 sm:w-16 sm:h-24' : 'w-24 h-36 sm:w-32 sm:h-48'} 
-        bg-white rounded-xl shadow-lg border-2 flex flex-col items-center justify-between p-1.5 sm:p-2 relative transition-all duration-200
-        ${selectable ? 'cursor-pointer hover:-translate-y-3 border-emerald-500 ring-4 ring-emerald-200 shadow-emerald-500/50' : 'opacity-60 border-slate-300 grayscale-[0.5]'}
-      `}
+      className={`${baseClasses} ${sizeClasses} bg-white text-slate-800 ${selectable ? 'cursor-pointer hover:-translate-y-3 border-emerald-500 ring-4 ring-emerald-200 shadow-emerald-500/50' : 'opacity-60 border-slate-300 grayscale-[0.5]'}`}
     >
-      <div className="text-[8px] sm:text-[10px] text-slate-400 w-full text-left font-bold italic px-1">No.{card.id}</div>
-      <div className="text-base sm:text-xl font-black text-slate-800 text-center tracking-tighter leading-tight drop-shadow-sm flex-1 flex items-center justify-center break-words">{card.name}</div>
-      <div className="flex flex-col w-full space-y-1 mb-1">
+      <div className="text-[6px] sm:text-[9px] text-slate-400 w-full text-left font-bold italic px-1">No.{card.id}</div>
+      <div className={`${size === 'small' ? 'text-[8px] sm:text-[11px]' : 'text-base sm:text-xl'} font-black text-center tracking-tighter leading-tight drop-shadow-sm flex-1 flex items-center justify-center break-words w-full`}>{card.name}</div>
+      <div className="flex flex-col w-full space-y-0.5 sm:space-y-1 mb-1">
         {themes.map(t => (
-          <div key={t.id} className={`flex justify-between items-center px-1.5 py-1 rounded text-[9px] sm:text-[11px] ${highlight === t.id ? 'bg-emerald-600 text-white font-black shadow-inner scale-105' : 'text-slate-600 bg-slate-100 font-bold'}`}>
-            <span className="flex items-center gap-0.5 whitespace-nowrap"><t.icon size={12} className={highlight === t.id ? "text-white" : t.color}/>{t.name}</span>
-            <span className="whitespace-nowrap truncate pl-1">{card[t.id]}<span className="text-[7px] sm:text-[8px] opacity-80 ml-0.5">{t.unit}</span></span>
+          <div key={t.id} className={`flex justify-between items-center px-1 sm:px-1.5 py-0.5 sm:py-1 rounded ${size === 'small' ? 'text-[6px] sm:text-[8px]' : 'text-[9px] sm:text-[11px]'} ${highlight === t.id ? 'bg-emerald-600 text-white font-black shadow-inner scale-105' : 'text-slate-600 bg-slate-100 font-bold'}`}>
+            <span className="flex items-center gap-0.5 whitespace-nowrap"><t.icon size={size === 'small' ? 8 : 12} className={highlight === t.id ? "text-white" : t.color}/>{t.name}</span>
+            <span className="whitespace-nowrap truncate pl-0.5 sm:pl-1">{card[t.id]}<span className="text-[5px] sm:text-[7px] opacity-80 ml-0.5">{t.unit}</span></span>
           </div>
         ))}
       </div>
@@ -143,8 +144,6 @@ export default function App() {
   const [playerCount, setPlayerCount] = useState(1);
   const [activeThemes] = useState(['population', 'area']);
   const [game, setGame] = useState(null);
-  
-  // 場が空の時に親が選ぶ属性
   const [pendingTheme, setPendingTheme] = useState('population');
   
   const [nickname, setNickname] = useState('');
@@ -156,12 +155,12 @@ export default function App() {
   const [joinRoomIdInput, setJoinRoomIdInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // ダウトモード用：嘘の宣言モーダル表示ステート
+  // ダウトモード用：嘘の宣言モーダル
   const [showDeclareModal, setShowDeclareModal] = useState(false);
   const [selectedCardToPlay, setSelectedCardToPlay] = useState(null);
   const [searchPrefectureQuery, setSearchPrefectureQuery] = useState('');
 
-  // ウィンドウサイズに応じた動的スケーリング (CSS 変数を使用)
+  // ウィンドウサイズの監視 (CSS変数 --vh の更新用)
   useEffect(() => {
     const handleResize = () => {
       document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
@@ -171,7 +170,7 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 初期化
+  // 初期化と一時ID生成
   useEffect(() => {
     const checkScripts = () => {
       if (window.supabase && typeof document !== 'undefined') {
@@ -199,7 +198,6 @@ export default function App() {
     if (!isOnline || !roomId || !user || !supabase) return;
 
     let subscription;
-
     const fetchAndSubscribe = async () => {
       try {
         const { data, error } = await supabase.from('rooms').select('*').eq('id', roomId).single();
@@ -213,7 +211,6 @@ export default function App() {
         
         subscription = supabase.channel(`public:rooms:id=eq.${roomId}`)
           .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => {
-             console.log("Room Update Received:", payload.new);
              const data = payload.new;
              setRoomData(data);
              if (data.game) setGame(data.game);
@@ -224,17 +221,12 @@ export default function App() {
           .subscribe();
 
       } catch (err) {
-        console.error("Fetch or subscribe error:", err);
+        console.error(err);
       }
     };
 
     fetchAndSubscribe();
-
-    return () => { 
-      if(subscription) {
-        supabase.removeChannel(subscription); 
-      }
-    };
+    return () => { if(subscription) supabase.removeChannel(subscription); };
   }, [isOnline, roomId, user, supabase]);
 
   useEffect(() => {
@@ -295,7 +287,7 @@ export default function App() {
       }));
       setGame({
         mode, players, turn: 0, fieldCards: [], currentThemeId: null, winner: null, phase: 'WAITING',
-        message: 'ゲームスタート！勝負属性を選んでカードを出してください。', deck: deck.slice(20)
+        message: 'ゲームスタート！勝負属性を選んでカードを出してください。', deck: deck.slice(20), lastPlayedIdx: 0
       });
       setStep('BOARD');
     }
@@ -311,7 +303,7 @@ export default function App() {
     }));
     const initialGame = {
       mode, players, turn: 0, fieldCards: [], currentThemeId: null, winner: null, phase: 'WAITING',
-      message: 'ゲームスタート！親は属性を選んでください。', deck: deck.slice(20)
+      message: 'ゲームスタート！親は属性を選んでください。', deck: deck.slice(20), lastPlayedIdx: 0
     };
     await supabase.from('rooms').update({ status: 'playing', game: initialGame }).eq('id', roomId);
   };
@@ -410,30 +402,41 @@ export default function App() {
 
   useEffect(() => {
     if (!game) return;
-    if (isOnline && roomData?.host_uid !== user?.uid) return;
-    if (game.phase === 'RESOLVING') { const t = setTimeout(moveToNext, 1200); return () => clearTimeout(t); }
-    if (game.mode === 'doubt' && game.phase === 'DOUBT_WINDOW') {
-       const t = setTimeout(onAcceptDoubt, 4500); return () => clearTimeout(t);
+    // タイマー管理の最適化: ゲームの進行状態が変わった時のみ動作
+    const currentHostId = roomData?.host_uid;
+    const isMyTurnToHostLogic = !isOnline || currentHostId === user?.uid;
+
+    if (isMyTurnToHostLogic) {
+      if (game.phase === 'RESOLVING') { 
+        const t = setTimeout(moveToNext, 1200); 
+        return () => clearTimeout(t); 
+      }
+      if (game.mode === 'doubt' && game.phase === 'DOUBT_WINDOW') {
+        const t = setTimeout(onAcceptDoubt, 4500); 
+        return () => clearTimeout(t); 
+      }
     }
-  }, [game?.phase, game?.mode, isOnline, roomData, moveToNext, onAcceptDoubt]);
+  }, [game?.phase, game?.mode, isOnline, roomData?.host_uid, user?.uid, moveToNext, onAcceptDoubt]);
 
   // CPUロジック
   useEffect(() => {
     if (!game || game.winner || game.phase !== 'WAITING') return;
     if (isOnline && roomData?.host_uid !== user?.uid) return; 
+    
     const p = game.players[game.turn];
     if (!p || !p.isCpu) return;
+    
     const t = setTimeout(() => {
       const cpuTheme = activeThemes[Math.floor(Math.random() * activeThemes.length)];
       if (game.mode === 'daifugo') {
-        const tid = game.currentThemeId || cpuTheme;
-        const targetValue = game.fieldCards.length === 0 ? 0 : game.fieldCards[game.fieldCards.length-1][tid];
+        const tid = safeTheme(game.currentThemeId || cpuTheme);
+        const targetValue = game.fieldCards.length === 0 ? 0 : (game.fieldCards[game.fieldCards.length-1][tid] || 0);
         const playableCards = p.hand.filter(c => c[tid] >= targetValue).sort((a,b)=>a[tid]-b[tid]);
         
         if (playableCards.length > 0) {
           handlePlayBasic(game.turn, playableCards[0], tid);
         } else {
-          if(!game.currentThemeId) handlePlayBasic(game.turn, p.hand[0], tid); // 場が空なら何でも出せる
+          if(!game.currentThemeId) handlePlayBasic(game.turn, p.hand[0], tid);
           else handlePassBasic(game.turn);
         }
       } else {
@@ -460,7 +463,7 @@ export default function App() {
       }
     }, 1500);
     return () => clearTimeout(t);
-  }, [game?.turn, game?.phase, game?.mode, updateGame]);
+  }, [game?.turn, game?.phase, game?.mode, activeThemes, isOnline, roomData?.host_uid, user?.uid, updateGame]);
 
   // 出せるカードかどうかの判定
   const canPlayCard = (card) => {
@@ -468,7 +471,7 @@ export default function App() {
     const actualViewIndex = isOnline ? Math.max(0, myPlayerIndex) : 0;
     if (game.phase !== 'WAITING') return false;
     if (game.turn !== actualViewIndex) return false;
-    if (game.mode === 'doubt') return true; // ダウトはルール無視で出せる(嘘として)
+    if (game.mode === 'doubt') return true; 
     
     const tid = safeTheme(game.currentThemeId || pendingTheme);
     const targetValue = game.fieldCards.length === 0 ? 0 : (game.fieldCards[game.fieldCards.length-1][tid] || 0);
@@ -746,14 +749,14 @@ export default function App() {
             <div className="relative w-32 h-44 sm:w-40 sm:h-52 flex items-center justify-center mt-2 sm:mt-4">
               {game.fieldCards.map((c, i) => (
                 <div key={`field-${i}`} className="absolute transform transition-all duration-500 drop-shadow-2xl" style={{ rotate: `${(i*7)%30-15}deg`, zIndex: i }}>
-                  <CardView card={c} activeThemes={['population', 'area']} highlight={game.currentThemeId} faceDown={currentMode === 'doubt'} declaredName={currentMode === 'doubt' ? PREFECTURES.find(p=>p.id===c.id)?.name : null} small={window.innerWidth < 640} />
+                  <CardView card={c} activeThemes={['population', 'area']} highlight={game.currentThemeId} faceDown={currentMode === 'doubt'} declaredName={currentMode === 'doubt' ? PREFECTURES.find(p=>p.id===c.id)?.name : null} size="large" />
                 </div>
               ))}
               
               {/* ダウト判定中のカード描画 */}
               {game.phase === 'DOUBT_WINDOW' && game.pending && (
                 <div className="absolute transform transition-all duration-500 scale-110 -translate-y-4 shadow-2xl" style={{ rotate: `${(game.fieldCards.length*7)%30-15}deg`, zIndex: game.fieldCards.length + 10 }}>
-                  <CardView card={game.pending.card} activeThemes={['population', 'area']} highlight={game.currentThemeId} faceDown={true} declaredName={game.pending.declaredPref.name} small={window.innerWidth < 640} />
+                  <CardView card={game.pending.card} activeThemes={['population', 'area']} highlight={game.currentThemeId} faceDown={true} declaredName={game.pending.declaredPref.name} size="large" />
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none animate-pulse">
                      <div className="bg-red-600 text-white font-black px-4 sm:px-5 py-1.5 sm:py-2 rounded-full shadow-[0_0_20px_rgba(239,68,68,0.8)] text-sm sm:text-lg italic uppercase border-2 border-white flex items-center gap-1">
                        <DoubtIcon size={16} className="sm:w-5 sm:h-5"/> DOUBT?
@@ -799,9 +802,9 @@ export default function App() {
                      card={c} 
                      activeThemes={['population', 'area']} 
                      selectable={selectable} 
-                     onClick={() => currentMode === 'daifugo' ? handlePlayBasic(actualViewIndex, c, game.currentThemeId || pendingTheme) : handleDoubtPlayClick(c)} 
-                     highlight={game.currentThemeId || pendingTheme} 
-                     small={window.innerWidth < 640}
+                     onClick={() => currentMode === 'daifugo' ? handlePlayBasic(actualViewIndex, c, safeTheme(game.currentThemeId || pendingTheme)) : handleDoubtPlayClick(c)} 
+                     highlight={safeTheme(game.currentThemeId || pendingTheme)} 
+                     size="small"
                    />
                  </div>
                );
@@ -816,7 +819,7 @@ export default function App() {
             <h2 className="text-lg sm:text-2xl font-black text-emerald-300 mb-4 sm:mb-6 drop-shadow-md">どの都道府県として出しますか？</h2>
             
             <div className="mb-4 sm:mb-8 flex justify-center scale-100 sm:scale-110 drop-shadow-2xl">
-              <CardView card={selectedCardToPlay} activeThemes={['population', 'area']} highlight={game.currentThemeId || pendingTheme} small={window.innerWidth < 640} />
+              <CardView card={selectedCardToPlay} activeThemes={['population', 'area']} highlight={safeTheme(game.currentThemeId || pendingTheme)} size="large" />
             </div>
 
             <div className="w-full max-w-sm bg-emerald-900/50 p-3 sm:p-5 rounded-[24px] sm:rounded-[32px] border border-emerald-500/20 shadow-2xl">
@@ -880,7 +883,7 @@ export default function App() {
               </h2>
               
               <div className="flex flex-col items-center gap-3 sm:gap-4 mb-6 sm:mb-10 w-full">
-                 <div className="flex justify-center scale-100 sm:scale-110 drop-shadow-xl"><CardView card={game.doubtResult.actual} activeThemes={['population', 'area']} highlight={game.doubtResult.themeUsed} small={window.innerWidth < 640} /></div>
+                 <div className="flex justify-center scale-100 sm:scale-110 drop-shadow-xl"><CardView card={game.doubtResult.actual} activeThemes={['population', 'area']} highlight={game.doubtResult.themeUsed} size="large" /></div>
                  <div className="text-white bg-black/30 px-4 sm:px-6 py-1.5 sm:py-2 rounded-full font-black text-xs sm:text-sm shadow-inner border border-white/10 mt-2 sm:mt-4 flex items-center gap-1.5 sm:gap-2">
                    <span className="text-white/60 text-[8px] sm:text-[10px] uppercase">正解のカード</span> {game.doubtResult.actual.name}
                  </div>
