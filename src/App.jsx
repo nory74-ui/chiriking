@@ -5,7 +5,7 @@ import {
   AlertCircle, ShieldAlert, CheckCircle, XCircle, 
   ChevronRight, Smartphone, User, Cpu, ThumbsUp,
   Network, Plus, LogIn, ClipboardList, ShieldAlert as DoubtIcon,
-  Search
+  Search, BookOpen
 } from 'lucide-react';
 
 /**
@@ -197,28 +197,44 @@ export default function App() {
   // リアルタイム同期
   useEffect(() => {
     if (!isOnline || !roomId || !user || !supabase) return;
-    const fetchRoom = async () => {
-      const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single();
-      if (data) {
-        setRoomData(data);
-        if (data.game) setGame(data.game);
-        if (data.mode) setMode(data.mode);
-        const pIdx = data.players.findIndex(p => p.uid === user.uid);
-        if (pIdx !== -1) setMyPlayerIndex(pIdx);
+
+    let subscription;
+
+    const fetchAndSubscribe = async () => {
+      try {
+        const { data, error } = await supabase.from('rooms').select('*').eq('id', roomId).single();
+        if (data) {
+          setRoomData(data);
+          if (data.game) setGame(data.game);
+          if (data.mode) setMode(data.mode);
+          const pIdx = data.players.findIndex(p => p.uid === user.uid);
+          if (pIdx !== -1) setMyPlayerIndex(pIdx);
+        }
+        
+        subscription = supabase.channel(`public:rooms:id=eq.${roomId}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => {
+             console.log("Room Update Received:", payload.new);
+             const data = payload.new;
+             setRoomData(data);
+             if (data.game) setGame(data.game);
+             if (data.mode) setMode(data.mode);
+             const pIdx = data.players.findIndex(p => p.uid === user.uid);
+             if (pIdx !== -1) setMyPlayerIndex(pIdx);
+          })
+          .subscribe();
+
+      } catch (err) {
+        console.error("Fetch or subscribe error:", err);
       }
     };
-    fetchRoom();
-    const channel = supabase.channel(`room_${roomId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => {
-        const data = payload.new;
-        setRoomData(data);
-        if (data.game) setGame(data.game);
-        if (data.mode) setMode(data.mode);
-        const pIdx = data.players.findIndex(p => p.uid === user.uid);
-        if (pIdx !== -1) setMyPlayerIndex(pIdx);
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+
+    fetchAndSubscribe();
+
+    return () => { 
+      if(subscription) {
+        supabase.removeChannel(subscription); 
+      }
+    };
   }, [isOnline, roomId, user, supabase]);
 
   useEffect(() => {
@@ -258,8 +274,10 @@ export default function App() {
       const { data, error } = await supabase.from('rooms').select('*').eq('id', targetId).single();
       if (error || !data) { setErrorMsg("部屋が見つかりません"); return; }
       if (data.status !== 'waiting') { setErrorMsg("開始済みです"); return; }
+      
       const newPlayers = [...data.players, { uid: user.uid, name: nickname || `参加者${data.players.length + 1}` }];
       await supabase.from('rooms').update({ players: newPlayers }).eq('id', targetId);
+      
       setRoomId(targetId);
       setIsOnline(true);
       setStep('LOBBY');
@@ -485,10 +503,60 @@ export default function App() {
         <div className="space-y-4">
           <button onClick={() => { setIsOnline(false); setStep('PLAYER_SELECT'); }} className="w-full py-5 bg-emerald-500 hover:bg-emerald-400 text-emerald-950 rounded-2xl font-black text-2xl shadow-[0_5px_15px_rgba(16,185,129,0.3)] active:scale-95 transition-all">1台で遊ぶ</button>
           <button onClick={() => { setIsOnline(true); setStep('ONLINE_MENU'); }} className="w-full py-5 bg-emerald-950 hover:bg-emerald-900 text-emerald-300 rounded-2xl font-black text-2xl border-2 border-emerald-500/30 shadow-lg active:scale-95 transition-all">オンライン対戦</button>
+          <button onClick={() => setStep('HOW_TO_PLAY')} className="w-full py-4 bg-emerald-800 hover:bg-emerald-700 text-emerald-100 rounded-2xl font-black text-xl border border-emerald-500/30 shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2">
+            <BookOpen size={20} /> 遊び方・ルール
+          </button>
         </div>
       </div>
       <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-emerald-600 rounded-full mix-blend-overlay filter blur-[100px] opacity-20 animate-pulse"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] bg-emerald-500 rounded-full mix-blend-overlay filter blur-[120px] opacity-20"></div>
+    </div>
+  );
+
+  if (step === 'HOW_TO_PLAY') return (
+    <div style={pageBaseStyle} className="p-4 sm:p-6 text-white text-center">
+      <div className="bg-emerald-800/80 border border-emerald-500/20 p-6 sm:p-10 rounded-[32px] sm:rounded-[48px] max-w-lg w-full shadow-2xl animate-fade-in backdrop-blur-md max-h-[90vh] overflow-y-auto scrollbar-hide text-left">
+        <h2 className="text-2xl sm:text-3xl font-black text-emerald-300 mb-6 italic drop-shadow-md text-center">遊び方・ルール</h2>
+        
+        <div className="space-y-6">
+          <section className="bg-emerald-950/50 p-5 rounded-2xl border border-emerald-800">
+            <h3 className="text-lg sm:text-xl font-black text-emerald-400 mb-3 border-b border-emerald-800 pb-2">基本の遊び方</h3>
+            <ul className="list-disc list-inside space-y-2 text-xs sm:text-sm text-emerald-100 ml-2">
+              <li>トランプの「大富豪」のように、手札を早く無くした人が勝ちです。</li>
+              <li>場に出ているカードの「勝負属性（人口・面積など）」の数字より、<strong>大きい数字</strong>を持つカードを出せます。</li>
+              <li>全員がパスして場が流れたら、最後にカードを出した人が「親」になり、<strong>勝負する属性を自由に選び直して</strong>カードを出せます。</li>
+            </ul>
+          </section>
+
+          <section className="bg-emerald-950/50 p-5 rounded-2xl border border-emerald-800">
+            <h3 className="text-lg sm:text-xl font-black text-emerald-400 mb-3 border-b border-emerald-800 pb-2 flex items-center gap-2">
+              <Play size={18} /> 基本モード
+            </h3>
+            <p className="text-xs sm:text-sm text-emerald-100 leading-relaxed">
+              数字の大きさを純粋に競う王道ルールです。手札の数値をしっかり見極め、場が流れた時に自分に有利な属性を選ぶ戦略がカギになります。
+            </p>
+          </section>
+
+          <section className="bg-emerald-950/50 p-5 rounded-2xl border border-emerald-800">
+            <h3 className="text-lg sm:text-xl font-black text-red-400 mb-3 border-b border-emerald-800 pb-2 flex items-center gap-2">
+              <DoubtIcon size={18} /> ダウトモード
+            </h3>
+            <ul className="list-disc list-inside space-y-2 text-xs sm:text-sm text-emerald-100 ml-2">
+              <li>カードを<strong>裏向き</strong>で出し、都道府県名を宣言します。この時、<strong>嘘の都道府県</strong>を宣言しても構いません。</li>
+              <li>他のプレイヤーは「ダウト」を宣言できます。</li>
+              <li><strong>ダウト成功：</strong> 嘘をついていた、または数字が小さかった場合。出した人がペナルティ。</li>
+              <li><strong>ダウト失敗：</strong> 正しいカードを出していた場合。ダウトした人がペナルティ。</li>
+              <li className="text-red-300 font-bold mt-2">【ペナルティ】手札が5枚になるまで山札からカードを補充し、ペナルティを受けた人から次のターン（親）が始まります。</li>
+            </ul>
+          </section>
+        </div>
+
+        <div className="mt-8 text-center">
+          <button onClick={() => setStep('MENU')} className="w-full bg-emerald-500 hover:bg-emerald-400 text-emerald-950 py-4 rounded-3xl font-black text-lg sm:text-xl shadow-lg active:scale-95 transition-all">
+            タイトルに戻る
+          </button>
+        </div>
+      </div>
     </div>
   );
 
