@@ -206,6 +206,7 @@ export default function App() {
 
   const updateGame = useCallback(async (updater) => {
     setGame(prev => {
+      if (!prev) return prev;
       const newState = typeof updater === 'function' ? updater(prev) : updater;
       if (isOnline && roomId && supabase) {
         supabase.from('rooms').update({ game: newState }).eq('id', roomId).catch(e => console.error(e));
@@ -245,7 +246,9 @@ export default function App() {
   };
 
   const handleStartButton = () => {
-    if (isOnline) { createRoom(); } else {
+    if (isOnline) { 
+      createRoom(); 
+    } else {
       const deck = [...PREFECTURES].sort(() => Math.random() - 0.5);
       const players = Array.from({ length: 4 }).map((_, i) => ({
         id: i, name: i < playerCount ? (playerCount === 1 ? (nickname || 'あなた') : `${nickname}${i + 1}`) : `CPU ${i - playerCount + 1}`,
@@ -291,7 +294,7 @@ export default function App() {
 
   const handlePlayBasic = (idx, card, theme = null) => {
     updateGame(prev => {
-      const activeT = theme || prev.currentThemeId;
+      const activeT = prev.currentThemeId || theme || pendingTheme;
       const newPlayers = prev.players.map((p, i) => i === idx ? { ...p, hand: p.hand.filter(c => c.id !== card.id) } : p);
       if (newPlayers[idx].hand.length === 0) return { ...prev, players: newPlayers, winner: newPlayers[idx], phase: 'OVER' };
       return { ...prev, lastPlayedIdx: idx, players: newPlayers.map(p => ({ ...p, passed: false })), fieldCards: [...prev.fieldCards, card], currentThemeId: activeT, phase: 'RESOLVING', message: `${prev.players[idx].name}のカード！` };
@@ -299,7 +302,7 @@ export default function App() {
   };
 
   const onDoubtPlay = (card, declaredPref, theme = null) => updateGame(prev => {
-    const tid = theme || prev.currentThemeId;
+    const tid = prev.currentThemeId || theme || pendingTheme;
     return {
       ...prev, 
       players: prev.players.map((p, i) => i === prev.turn ? { ...p, hand: p.hand.filter(c => c.id !== card.id) } : p), 
@@ -313,8 +316,9 @@ export default function App() {
   const onResolveDoubt = (doubterId) => {
     updateGame(prev => {
       if (prev.phase !== 'DOUBT_WINDOW' || !prev.pending) return prev;
-      const tid = prev.pending.themeAtPlay;
-      const targetValue = prev.fieldCards.length === 0 ? 0 : prev.fieldCards[prev.fieldCards.length-1][tid];
+      const tid = prev.pending.themeAtPlay || 'population'; // 万が一のためにフォールバック
+      const targetValue = prev.fieldCards.length === 0 ? 0 : prev.fieldCards[prev.fieldCards.length-1][tid] || 0;
+      
       const isTruth = (prev.pending.card[tid] >= targetValue) && (prev.pending.card.id === prev.pending.declaredPref.id);
       const loserId = isTruth ? doubterId : prev.pending.playerIndex;
       
@@ -331,6 +335,8 @@ export default function App() {
       };
     });
   };
+
+  const handlePassBasic = (idx) => updateGame(prev => ({ ...prev, players: prev.players.map((p, i) => i === idx ? { ...p, passed: true } : p), phase: 'RESOLVING', message: `パス` }));
 
   const onAcceptDoubt = useCallback(() => {
     updateGame(prev => {
@@ -550,7 +556,7 @@ export default function App() {
            <div className="flex justify-center items-end space-x-2 h-40 overflow-x-auto scrollbar-hide px-2">
              {cp?.hand.map(c => (
                <div key={c.id} className={`${game.turn === actualViewIndex && game.phase === 'WAITING' ? 'animate-[bounce_2s_infinite]' : ''}`}>
-                 <CardView card={c} activeThemes={['population', 'area']} selectable={game.turn === actualViewIndex && game.phase === 'WAITING'} onClick={() => currentMode === 'daifugo' ? handlePlayBasic(actualViewIndex, c, game.currentThemeId ? null : pendingTheme) : onDoubtPlay(c, c, game.currentThemeId ? null : pendingTheme)} highlight={game.currentThemeId || pendingTheme} />
+                 <CardView card={c} activeThemes={['population', 'area']} selectable={game.turn === actualViewIndex && game.phase === 'WAITING'} onClick={() => currentMode === 'daifugo' ? handlePlayBasic(actualViewIndex, c, game.currentThemeId || pendingTheme) : onDoubtPlay(c, c, game.currentThemeId || pendingTheme)} highlight={game.currentThemeId || pendingTheme} />
                </div>
              ))}
            </div>
