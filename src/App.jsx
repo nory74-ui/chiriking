@@ -10,15 +10,18 @@ import {
 
 /**
  * Tailwind CSS & Supabase Dynamic Loader
+ * プレビュー環境と本番環境の両方でデザインと機能を確実に動作させます。
  */
 const useExternalScripts = () => {
   useEffect(() => {
+    // Tailwind CSSの注入
     if (!document.getElementById('tailwind-cdn')) {
       const script = document.createElement('script');
       script.id = 'tailwind-cdn';
       script.src = 'https://cdn.tailwindcss.com';
       document.head.appendChild(script);
     }
+    // Supabase SDKの注入
     if (!document.getElementById('supabase-cdn')) {
       const script = document.createElement('script');
       script.id = 'supabase-cdn';
@@ -55,7 +58,7 @@ const PREFECTURES = [
   { id: 21, name: '岐阜県', population: 193, area: 10621, density: 181, agriculture: 1000, industry: 58000, precipitation: 1950, agingRate: 31.3 },
   { id: 22, name: '静岡県', population: 355, area: 7777, density: 456, agriculture: 2100, industry: 165000, precipitation: 2400, agingRate: 30.8 },
   { id: 23, name: '愛知県', population: 748, area: 5172, density: 1446, agriculture: 3000, industry: 480000, precipitation: 1550, agingRate: 26.2 },
-  { id: 24, name: '三重県', population: 172, area: 5774, density: 297, agriculture: 1000, industry: 110000, precipitation: 2100, agingRate: 31.0 },
+  { id: 24, name: '三重県', population: 172, area: 5774, density: 297, agriculture: 1000, industry: 11000, precipitation: 2100, agingRate: 31.0 },
   { id: 25, name: '滋賀県', population: 140, area: 4017, density: 348, agriculture: 400, industry: 75000, precipitation: 1650, agingRate: 27.2 },
   { id: 26, name: '京都府', population: 253, area: 4612, density: 548, agriculture: 600, industry: 53000, precipitation: 1550, agingRate: 29.8 },
   { id: 27, name: '大阪府', population: 878, area: 1905, density: 4608, agriculture: 300, industry: 165000, precipitation: 1350, agingRate: 28.4 },
@@ -72,7 +75,7 @@ const PREFECTURES = [
   { id: 38, name: '愛媛県', population: 129, area: 5676, density: 227, agriculture: 1000, industry: 42000, precipitation: 1350, agingRate: 34.2 },
   { id: 39, name: '高知県', population: 67, area: 7103, density: 94, agriculture: 1100, industry: 11000, precipitation: 2650, agingRate: 36.3 },
   { id: 40, name: '福岡県', population: 511, area: 4986, density: 1024, agriculture: 2000, industry: 90000, precipitation: 1650, agingRate: 28.5 },
-  { id: 41, name: '佐賀県', population: 2440, area: 2440, density: 327, agriculture: 1100, industry: 16000, precipitation: 1850, agingRate: 31.1 },
+  { id: 41, name: '佐賀県', population: 80, area: 2440, density: 327, agriculture: 1100, industry: 16000, precipitation: 1850, agingRate: 31.1 },
   { id: 42, name: '長崎県', population: 127, area: 4132, density: 307, agriculture: 1500, industry: 16000, precipitation: 1850, agingRate: 34.2 },
   { id: 43, name: '熊本県', population: 170, area: 7409, density: 229, agriculture: 3500, industry: 28000, precipitation: 2050, agingRate: 32.3 },
   { id: 44, name: '大分県', population: 109, area: 6340, density: 171, agriculture: 1000, industry: 32000, precipitation: 1650, agingRate: 34.4 },
@@ -96,7 +99,7 @@ const CardView = ({ card, activeThemes, faceDown, selectable, onClick, highlight
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white to-transparent" />
         <div className="text-[7px] sm:text-[10px] font-black italic tracking-tighter uppercase transform -rotate-45 opacity-30 mb-2">ChiriKing</div>
         {declaredName && (
-          <div className="bg-black/40 px-2 py-0.5 rounded text-[8px] font-black text-white absolute bottom-2">{declaredName}</div>
+          <div className="bg-black/60 px-2 py-0.5 rounded text-[8px] font-black text-white absolute bottom-2 whitespace-nowrap">{declaredName}</div>
         )}
       </div>
     );
@@ -155,20 +158,25 @@ export default function App() {
     setUser({ uid });
   }, []);
 
-  // Supabase初期化
+  // Supabase初期化（リトライロジック付き）
   useEffect(() => {
+    let retryCount = 0;
     const initSupabase = () => {
       let url = '';
       let key = '';
       try {
+        // Viteの環境変数
         url = import.meta.env.VITE_SUPABASE_URL || '';
         key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
       } catch (e) {}
+      
       if (!url || !key) return;
+
       if (window.supabase) {
         setSupabase(window.supabase.createClient(url, key));
-      } else {
-        setTimeout(initSupabase, 500);
+      } else if (retryCount < 20) {
+        retryCount++;
+        setTimeout(initSupabase, 300);
       }
     };
     initSupabase();
@@ -216,7 +224,7 @@ export default function App() {
   }, [isOnline, roomId, supabase]);
 
   const createRoom = async () => {
-    if (!supabase) { setErrorMsg('Supabaseが未設定です'); return; }
+    if (!supabase) { setErrorMsg('接続準備中です。少々お待ちください。'); return; }
     if (!user) return;
     const newRoomId = Math.floor(1000 + Math.random() * 9000).toString();
     try {
@@ -227,23 +235,36 @@ export default function App() {
       }]);
       setRoomId(newRoomId);
       setStep('LOBBY');
-    } catch (e) { setErrorMsg('部屋の作成に失敗'); }
+    } catch (e) { setErrorMsg('部屋の作成に失敗しました'); }
   };
 
   const joinRoom = async () => {
-    if (!supabase) return;
+    if (!supabase) { 
+      setErrorMsg('接続準備中です。少々お待ちください。'); 
+      return; 
+    }
+    const targetId = joinRoomIdInput.trim();
+    if (!targetId) {
+      setErrorMsg('ルームIDを入力してください');
+      return;
+    }
     try {
-      const { data } = await supabase.from('rooms').select('*').eq('id', joinRoomIdInput).single();
-      if (!data) { setErrorMsg("部屋なし"); return; }
+      const { data, error } = await supabase.from('rooms').select('*').eq('id', targetId).single();
+      if (error || !data) { setErrorMsg("部屋が見つかりません"); return; }
+      if (data.status !== 'waiting') { setErrorMsg("この部屋は既に開始されています"); return; }
+      if (data.players.length >= (data.player_count || 4)) { setErrorMsg("満員です"); return; }
+      
       const newPlayers = [...data.players, { uid: user.uid, name: `参加者${data.players.length + 1}` }];
-      await supabase.from('rooms').update({ players: newPlayers }).eq('id', joinRoomIdInput);
-      setRoomId(joinRoomIdInput);
+      await supabase.from('rooms').update({ players: newPlayers }).eq('id', targetId);
+      setRoomId(targetId);
       setIsOnline(true);
       setStep('LOBBY');
-    } catch (e) { setErrorMsg('入室エラー'); }
+    } catch (e) { 
+      console.error(e);
+      setErrorMsg('入室エラーが発生しました'); 
+    }
   };
 
-  // ゲーム開始処理
   const handleStartButton = () => {
     if (isOnline) { 
       createRoom(); 
@@ -287,7 +308,7 @@ export default function App() {
         while (prev.players[next].passed && loop < 4) { next = (next + 1) % 4; loop++; }
         if (next === prev.lastPlayedIdx && prev.players.filter(p => p.passed).length >= 3) {
           const reset = prev.players.map(p => ({ ...p, passed: false }));
-          return { ...prev, turn: prev.lastPlayedIdx, fieldCards: [], currentThemeId: null, players: reset, phase: 'WAITING', message: `🔄 場が流れました。親が属性を選択。` };
+          return { ...prev, turn: prev.lastPlayedIdx, fieldCards: [], currentThemeId: null, players: reset, phase: 'WAITING', message: `🔄 場が流れました。属性を選んでください。` };
         }
       }
       return { ...prev, turn: next, phase: 'WAITING' };
@@ -305,7 +326,6 @@ export default function App() {
 
   const handlePassBasic = (idx) => updateGame(prev => ({ ...prev, players: prev.players.map((p, i) => i === idx ? { ...p, passed: true } : p), phase: 'RESOLVING', message: `パス` }));
 
-  // ダウトモード用プレイ
   const onDoubtPlay = (card, declaredPref, theme = null) => updateGame(prev => ({
     ...prev, 
     players: prev.players.map((p, i) => i === prev.turn ? { ...p, hand: p.hand.filter(c => c.id !== card.id) } : p), 
@@ -315,21 +335,15 @@ export default function App() {
     message: `${prev.players[prev.turn].name} が「${declaredPref.name}」を宣言！`
   }));
 
-  // ダウト解決
   const onResolveDoubt = (doubterId) => {
     updateGame(prev => {
       if (prev.phase !== 'DOUBT_WINDOW') return prev;
       const tid = prev.currentThemeId;
-      // 判定条件：実際のカードの数値が、宣言した都道府県の数値以上であればセーフ（または場の数値以上）
-      // 動画準拠：宣言した都道府県を出し、その数値が前のカードより小さいか、宣言自体が嘘ならアウト
       const actualValue = prev.pending.card[tid];
       const targetValue = prev.fieldCards.length === 0 ? 0 : prev.fieldCards[prev.fieldCards.length-1][tid];
-      
       const isTruth = (actualValue >= targetValue) && (prev.pending.card.id === prev.pending.declaredPref.id);
-      
       const loserId = isTruth ? doubterId : prev.pending.playerIndex;
       
-      // ペナルティ：手札が5枚になるまで補充
       let newHand = [...prev.players[loserId].hand];
       let currentDeck = [...prev.deck];
       while (newHand.length < 5 && currentDeck.length > 0) {
@@ -343,8 +357,8 @@ export default function App() {
         phase: 'RESOLUTION', 
         doubtResult: { actual: prev.pending.card, declared: prev.pending.declaredPref, isTruth, loserId },
         fieldCards: [],
-        currentThemeId: null, // 場を流す
-        turn: loserId // 重要：失敗した人からリスタート
+        currentThemeId: null,
+        turn: loserId 
       };
     });
   };
@@ -373,7 +387,6 @@ export default function App() {
     }
   }, [game?.phase, game?.mode, isOnline, roomData, moveToNext, onAcceptDoubt]);
 
-  // CPUロジック
   useEffect(() => {
     if (!game || game.winner || game.phase !== 'WAITING') return;
     if (isOnline && roomData?.host_uid !== user?.uid) return; 
@@ -390,7 +403,6 @@ export default function App() {
           if (v) handlePlayBasic(game.turn, v); else handlePassBasic(game.turn);
         }
       } else {
-        // ダウトモード：常に本当のことを言うが、勝負属性がなければ適当に選ぶ
         const activeT = game.currentThemeId || cpuTheme;
         onDoubtPlay(p.hand[0], p.hand[0], activeT);
       }
@@ -398,20 +410,28 @@ export default function App() {
     return () => clearTimeout(t);
   }, [game?.turn, game?.phase, game?.mode, updateGame]);
 
+  // デザイン反映用：CSSが読み込まれるまでのフォールバック
+  const pageBaseStyle = "min-h-screen bg-emerald-800 flex flex-col items-center justify-center p-6 text-center text-white font-sans";
+
   if (step === 'MENU') return (
-    <div className="min-h-screen bg-emerald-800 flex flex-col items-center justify-center p-6 text-center text-white">
-      <div className="z-10 w-full max-w-sm space-y-12 animate-fade-in text-white">
+    <div className={pageBaseStyle}>
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+      `}} />
+      <div className="z-10 w-full max-w-sm space-y-12 animate-fade-in">
         <h1 className="text-6xl font-black italic tracking-tighter drop-shadow-xl">CHIRIKING</h1>
         <div className="space-y-4">
           <button onClick={() => { setIsOnline(false); setStep('PLAYER_SELECT'); }} className="w-full py-5 bg-white text-emerald-900 rounded-2xl font-black text-2xl shadow-xl active:scale-95 transition-all">1台で遊ぶ</button>
-          <button onClick={() => { setIsOnline(true); setStep('ONLINE_MENU'); }} className="w-full py-5 bg-emerald-950 text-white rounded-2xl font-black text-2xl border border-white/20 shadow-xl active:scale-95 transition-all text-white">オンライン対戦</button>
+          <button onClick={() => { setIsOnline(true); setStep('ONLINE_MENU'); }} className="w-full py-5 bg-emerald-950 text-white rounded-2xl font-black text-2xl border border-white/20 shadow-xl active:scale-95 transition-all">オンライン対戦</button>
         </div>
       </div>
     </div>
   );
 
   if (step === 'PLAYER_SELECT') return (
-    <div className="min-h-screen bg-emerald-800 flex items-center justify-center p-6 text-white text-center">
+    <div className={pageBaseStyle}>
       <div className="bg-white p-10 rounded-[48px] max-w-md w-full text-slate-800 shadow-2xl animate-fade-in">
         <h2 className="text-3xl font-black text-emerald-700 mb-8 italic">何人で遊ぶ？</h2>
         <div className="flex flex-col gap-4 mb-8">
@@ -425,13 +445,27 @@ export default function App() {
   );
 
   if (step === 'ONLINE_MENU') return (
-    <div className="min-h-screen bg-emerald-800 flex flex-col items-center justify-center p-6 text-white text-center">
-      <div className="w-full max-w-sm space-y-8 animate-fade-in text-white">
+    <div className={pageBaseStyle}>
+      {errorMsg && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-full z-[1000] flex items-center gap-2 font-black shadow-lg">
+          <AlertCircle size={20}/>{errorMsg}
+          <button onClick={() => setErrorMsg('')}><XCircle size={16}/></button>
+        </div>
+      )}
+      <div className="w-full max-w-sm space-y-8 animate-fade-in">
         <h2 className="text-4xl font-black italic">ONLINE</h2>
-        <div className="bg-white/10 p-6 rounded-[32px] border border-white/10 shadow-2xl">
-          <button onClick={() => { setIsOnline(true); setStep('PLAYER_SELECT'); }} className="w-full bg-white text-emerald-900 py-5 rounded-2xl font-black text-2xl mb-6 shadow-md text-emerald-900">部屋を作る</button>
-          <input type="text" value={joinRoomIdInput} onChange={e => setJoinRoomIdInput(e.target.value)} placeholder="ルームID" className="w-full bg-emerald-950/50 text-white text-center text-3xl font-black py-4 rounded-2xl mb-4 focus:ring-4 ring-emerald-400 outline-none text-white"/>
-          <button onClick={joinRoom} className="w-full bg-emerald-600 text-white py-5 rounded-2xl font-black text-xl shadow-md text-white">参加する</button>
+        <div className="bg-white/10 p-6 rounded-[32px] border border-white/10 shadow-2xl space-y-6">
+          <button onClick={() => { setIsOnline(true); setStep('PLAYER_SELECT'); }} className="w-full bg-white text-emerald-900 py-5 rounded-2xl font-black text-2xl shadow-md">部屋を作る</button>
+          <div className="space-y-2">
+            <input 
+              type="text" 
+              value={joinRoomIdInput} 
+              onChange={e => setJoinRoomIdInput(e.target.value)} 
+              placeholder="ルームIDを入力" 
+              className="w-full bg-emerald-950/50 text-white text-center text-3xl font-black py-4 rounded-2xl focus:ring-4 ring-emerald-400 outline-none placeholder:text-white/30"
+            />
+            <button onClick={joinRoom} className="w-full bg-emerald-600 text-white py-5 rounded-2xl font-black text-xl shadow-md hover:bg-emerald-500 active:scale-95 transition-all">参加する</button>
+          </div>
         </div>
         <button onClick={() => setStep('MENU')} className="text-sm underline">戻る</button>
       </div>
@@ -439,15 +473,16 @@ export default function App() {
   );
 
   if (step === 'LOBBY') return (
-    <div className="min-h-screen bg-emerald-800 flex flex-col items-center justify-center p-6 text-white text-center">
+    <div className={pageBaseStyle}>
       <div className="bg-white p-10 rounded-[48px] max-w-sm w-full text-slate-800 shadow-2xl animate-fade-in">
         <h2 className="text-3xl font-black text-emerald-700 mb-6 italic">待機室</h2>
         <div className="bg-slate-100 p-4 rounded-2xl mb-6 border border-slate-200">
+          <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Room ID</p>
           <p className="text-4xl font-mono font-black text-emerald-600">{roomId}</p>
         </div>
         <div className="text-left mb-6 space-y-2">
           {roomData?.players?.map((p, i) => (
-            <div key={p.uid} className="bg-emerald-50 p-3 rounded-xl font-black flex items-center gap-2 text-emerald-900"><User size={16}/> {p.name} {i === 0 && <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full ml-auto text-white">HOST</span>}</div>
+            <div key={p.uid} className="bg-emerald-50 p-3 rounded-xl font-black flex items-center gap-2 text-emerald-900"><User size={16}/> {p.name} {i === 0 && <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full ml-auto">HOST</span>}</div>
           ))}
           {Array.from({ length: Math.max(0, playerCount - (roomData?.players?.length || 0)) }).map((_, i) => (
             <div key={`empty-${i}`} className="border-2 border-dashed border-slate-100 p-3 rounded-xl font-bold flex items-center gap-2 text-slate-200 italic"><Plus size={16}/> 空き</div>
@@ -456,27 +491,27 @@ export default function App() {
         {roomData?.host_uid === user?.uid ? (
           <button onClick={handleStartOnlineMatch} className={`w-full py-5 rounded-3xl font-black text-xl shadow-lg active:scale-95 transition-all ${roomData?.players?.length >= playerCount ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>ゲーム開始</button>
         ) : (
-          <p className="text-slate-400 font-black animate-pulse">ホストの開始を待っています...</p>
+          <p className="text-slate-400 font-black animate-pulse bg-slate-50 py-4 rounded-xl">ホストの開始を待っています...</p>
         )}
       </div>
     </div>
   );
 
   if (step === 'RULE') return (
-    <div className="min-h-screen bg-emerald-800 flex items-center justify-center p-6 text-white text-center">
+    <div className={pageBaseStyle}>
       <div className="bg-white p-10 rounded-[48px] max-w-md w-full text-slate-800 shadow-2xl animate-fade-in">
-        <h2 className="text-3xl font-black text-emerald-700 mb-8 italic text-emerald-700">ルール選択</h2>
-        <div className="flex gap-4 mb-8 text-white">
+        <h2 className="text-3xl font-black text-emerald-700 mb-8 italic">ルール選択</h2>
+        <div className="flex gap-4 mb-8">
           <button onClick={()=>setMode('daifugo')} className={`flex-1 py-4 rounded-xl font-black border-2 transition-all ${mode==='daifugo'?'bg-emerald-600 text-white border-emerald-600 shadow-md':'border-slate-200 text-slate-400'}`}>基本モード</button>
           <button onClick={()=>setMode('doubt')} className={`flex-1 py-4 rounded-xl font-black border-2 transition-all ${mode==='doubt'?'bg-red-600 text-white border-red-600 shadow-md':'border-slate-200 text-slate-400'}`}>ダウトモード</button>
         </div>
-        <button onClick={handleStartButton} className="w-full bg-emerald-600 text-white py-6 rounded-3xl font-black text-2xl text-white">決定！</button>
+        <button onClick={handleStartButton} className="w-full bg-emerald-600 text-white py-6 rounded-3xl font-black text-2xl">決定！</button>
       </div>
     </div>
   );
 
   if (step === 'BOARD' && game) {
-    const actualViewIndex = isOnline ? myPlayerIndex : game.viewIndex;
+    const actualViewIndex = isOnline ? myPlayerIndex : game.turn;
     const cp = game.players[actualViewIndex];
     const currentOrPendingThemeId = game.currentThemeId || pendingTheme;
     const td = THEME_DEFS[currentOrPendingThemeId];
@@ -484,70 +519,60 @@ export default function App() {
 
     return (
       <div className="min-h-screen bg-emerald-800 text-white flex flex-col overflow-hidden relative">
-        <style dangerouslySetInnerHTML={{__html: `
-          @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-          .animate-fade-in { animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-          .scrollbar-hide::-webkit-scrollbar { display: none; }
-          .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-        `}} />
-        
-        {/* ヘッダー */}
-        <div className="bg-emerald-950/90 p-3 flex justify-between items-center shrink-0 border-b border-white/10 shadow-sm z-50 backdrop-blur-md text-white">
-          <div className="flex flex-col text-white">
+        <div className="bg-emerald-950/90 p-3 flex justify-between items-center shrink-0 border-b border-white/10 shadow-sm z-50 backdrop-blur-md">
+          <div className="flex flex-col">
             <div className="font-black text-emerald-500 text-[10px] italic tracking-widest flex items-center gap-1 uppercase">
               <MapIcon size={12}/> CHIRIKING
             </div>
             <div className={`text-[8px] font-bold uppercase px-1.5 rounded-sm inline-block ${currentMode === 'doubt' ? 'bg-red-600' : 'bg-emerald-600'} text-white`}>
-              {currentMode === 'doubt' ? 'DOUBT MODE' : 'BASIC MODE'}
+              RULE: {currentMode}
             </div>
           </div>
-          <div className="text-[10px] font-black bg-emerald-400/20 text-emerald-100 px-3 py-1 rounded-full uppercase italic animate-pulse border border-emerald-400/30 text-emerald-100">{game.message}</div>
+          <div className="text-[10px] font-black bg-emerald-400/20 text-emerald-100 px-3 py-1 rounded-full uppercase italic animate-pulse border border-emerald-400/30">{game.message}</div>
           <button onClick={() => setStep('MENU')} className="text-[9px] bg-red-600/20 text-red-400 font-black px-2 py-1 rounded">EXIT</button>
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-center relative px-4">
-          
-          {/* 対戦相手のカード枚数 */}
+          {/* 相手のカード枚数 */}
           <div className="absolute top-4 left-0 right-0 flex justify-center gap-4 z-40 px-4">
             {game.players.map((p, i) => {
-              if (i === actualViewIndex) return null;
+              if (i === (isOnline ? myPlayerIndex : -1)) return null;
               return (
                 <div key={i} className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border-2 transition-all duration-300 ${game.turn === i ? 'bg-emerald-500 text-emerald-950 border-emerald-300 scale-110 shadow-lg z-10' : 'bg-black/40 border-white/10 text-white/70 opacity-80'}`}>
-                  <span className="text-[10px] font-black truncate max-w-[60px] text-white">{p.name}</span>
-                  <div className="flex items-center gap-1 text-white">
+                  <span className="text-[10px] font-black truncate max-w-[60px]">{p.name}</span>
+                  <div className="flex items-center gap-1">
                     <div className="flex -space-x-1.5">{Array.from({ length: Math.min(p.hand.length, 5) }).map((_, idx) => (
                       <div key={idx} className={`w-3 h-4 bg-emerald-900 border border-white/30 rounded-sm shadow-sm`} />
                     ))}</div>
-                    <span className="text-xs font-black ml-1 text-white">{p.hand.length}枚</span>
+                    <span className="text-xs font-black ml-1">{p.hand.length}枚</span>
                   </div>
-                  {p.passed && <span className="absolute -bottom-2 bg-red-500 text-white text-[8px] px-1.5 rounded-full border border-white/20 font-black text-white">PASS</span>}
+                  {p.passed && <span className="absolute -bottom-2 bg-red-500 text-white text-[8px] px-1.5 rounded-full border border-white/20 font-black">PASS</span>}
                 </div>
               );
             })}
           </div>
 
-          {/* 中央エリア: 属性選択 or 勝負属性表示 */}
           {!game.currentThemeId ? (
-            <div className="text-center mt-12 mb-6 z-10 animate-fade-in w-full max-w-sm text-white">
-              {game.turn === actualViewIndex ? (
-                <div className="bg-emerald-900/90 p-5 rounded-[32px] border-2 border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.4)] backdrop-blur-md text-white">
-                  <p className="text-xs font-black text-emerald-300 mb-4 tracking-widest uppercase text-white">勝負属性を選択</p>
-                  <div className="flex justify-center gap-4 text-white">{Object.values(THEME_DEFS).map(TDef => (
-                      <button key={TDef.id} onClick={() => setPendingTheme(TDef.id)} className={`px-5 py-3 rounded-2xl font-black flex flex-col items-center gap-1 border-2 transition-all duration-200 ${pendingTheme === TDef.id ? 'bg-emerald-500 text-emerald-950 border-emerald-300 scale-110 shadow-lg' : 'bg-black/40 border-white/10 text-white/50 hover:bg-black/20'} text-white`}><TDef.icon size={20}/> <span className="text-xs text-white">{TDef.name}</span></button>
-                    ))}</div>
+            <div className="text-center mt-12 mb-6 z-10 animate-fade-in w-full max-w-sm">
+              {game.turn === (isOnline ? myPlayerIndex : game.turn) ? (
+                <div className="bg-emerald-900/90 p-5 rounded-[32px] border-2 border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.4)] backdrop-blur-md">
+                  <p className="text-xs font-black text-emerald-300 mb-4 tracking-widest uppercase">勝負属性を選択してください</p>
+                  <div className="flex justify-center gap-4">{Object.values(THEME_DEFS).map(TDef => (
+                    <button key={TDef.id} onClick={() => setPendingTheme(TDef.id)} className={`px-5 py-3 rounded-2xl font-black flex flex-col items-center gap-1 border-2 transition-all duration-200 ${pendingTheme === TDef.id ? 'bg-emerald-500 text-emerald-950 border-emerald-300 scale-110 shadow-lg' : 'bg-black/40 border-white/10 text-white/50 hover:bg-black/20'}`}><TDef.icon size={20}/> <span className="text-xs">{TDef.name}</span></button>
+                  ))}</div>
                 </div>
               ) : (
-                <div className="bg-black/40 px-6 py-4 rounded-3xl border border-white/10 backdrop-blur-md text-white"><p className="text-sm font-black text-emerald-400/80 animate-pulse tracking-widest text-white">{game.players[game.turn]?.name} が属性を選んでいます...</p></div>
+                <div className="bg-black/40 px-6 py-4 rounded-3xl border border-white/10 backdrop-blur-md"><p className="text-sm font-black text-emerald-400/80 animate-pulse tracking-widest">{game.players[game.turn]?.name} が属性を選んでいます...</p></div>
               )}
             </div>
           ) : (
             td && (
-              <div className="bg-emerald-900/80 p-6 rounded-[40px] border-2 border-emerald-400 text-center mt-10 mb-6 backdrop-blur-md shadow-[0_0_30px_rgba(52,211,153,0.3)] animate-fade-in relative z-10 w-72 text-white">
-                 <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-emerald-400 text-emerald-950 px-5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-md flex items-center gap-1 text-emerald-950"><td.icon size={14}/> CURRENT THEME</div>
-                 <div className="text-emerald-100 text-sm font-black mb-3 flex justify-center items-center gap-1 text-emerald-100">{td.name} 勝負</div>
-                 <div className="text-white text-2xl font-black italic flex items-baseline justify-center gap-2 text-white">
-                   {game.fieldCards.length > 0 ? (currentMode === 'doubt' ? "???" : game.fieldCards[game.fieldCards.length-1].name) : "Waiting..."}
-                   <span className="text-yellow-400 font-mono text-5xl drop-shadow-md leading-none ml-2 text-yellow-400">
+              <div className="bg-emerald-900/80 p-6 rounded-[40px] border-2 border-emerald-400 text-center mt-10 mb-6 backdrop-blur-md shadow-[0_0_30px_rgba(52,211,153,0.3)] animate-fade-in relative z-10 w-72">
+                 <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-emerald-400 text-emerald-950 px-5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-md flex items-center gap-1"><td.icon size={14}/> CURRENT THEME</div>
+                 <div className="text-emerald-100 text-sm font-black mb-3 flex justify-center items-center gap-1">{td.name} 勝負</div>
+                 <div className="text-white text-2xl font-black italic flex items-baseline justify-center gap-2">
+                   {game.fieldCards.length > 0 ? (currentMode === 'doubt' ? "???" : game.fieldCards[game.fieldCards.length-1].name) : "待機中"}
+                   <span className="text-yellow-400 font-mono text-5xl drop-shadow-md leading-none ml-2">
                      {game.fieldCards.length > 0 ? (currentMode === 'doubt' ? "?" : game.fieldCards[game.fieldCards.length-1][game.currentThemeId]) : "-"}
                    </span>
                  </div>
@@ -563,34 +588,32 @@ export default function App() {
             ))}
             {game.phase === 'DOUBT_WINDOW' && (
               <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center pointer-events-none">
-                 <div className="bg-red-600 text-white font-black px-6 py-2 rounded-full animate-bounce shadow-2xl text-xl italic uppercase tracking-tighter flex items-center gap-2 border-2 border-white text-white">
+                 <div className="bg-red-600 text-white font-black px-6 py-2 rounded-full animate-bounce shadow-2xl text-xl italic uppercase tracking-tighter flex items-center gap-2 border-2 border-white">
                    <DoubtIcon size={24}/> DOUBT?
                  </div>
               </div>
             )}
-            {game.fieldCards.length === 0 && !game.pending && <div className="text-white/10 font-black italic text-4xl border-4 border-dashed border-white/10 rounded-3xl w-full h-full flex items-center justify-center drop-shadow-sm text-white">FIELD</div>}
           </div>
         </div>
 
-        {/* 手札セクション */}
-        <div className={`h-64 transition-colors duration-300 border-t-4 p-4 pb-10 shrink-0 shadow-[0_-15px_40px_rgba(0,0,0,0.5)] z-50 backdrop-blur-xl relative ${game.turn === actualViewIndex ? 'bg-emerald-800/95 border-emerald-400 shadow-[0_-15px_50px_rgba(52,211,153,0.3)]' : 'bg-emerald-950/95 border-emerald-950'} text-white`}>
-           <div className="flex justify-between items-center mb-4 max-w-lg mx-auto relative text-white">
-             <div className={`text-[10px] font-black italic uppercase tracking-[0.2em] flex items-center gap-1 px-3 py-1 rounded-full ${game.turn === actualViewIndex ? 'bg-emerald-400 text-emerald-950' : 'text-emerald-500/50'} text-white`}>
-               <ClipboardList size={12}/> {game.turn === actualViewIndex ? 'あなたのターン！' : 'あなたの手札'}
+        <div className={`h-64 transition-colors duration-300 border-t-4 p-4 pb-10 shrink-0 shadow-[0_-15px_40px_rgba(0,0,0,0.5)] z-50 backdrop-blur-xl relative ${game.turn === actualViewIndex ? 'bg-emerald-800/95 border-emerald-400' : 'bg-emerald-950/95 border-emerald-950'}`}>
+           <div className="flex justify-between items-center mb-4 max-w-lg mx-auto relative">
+             <div className={`text-[10px] font-black italic uppercase tracking-[0.2em] flex items-center gap-1 px-3 py-1 rounded-full ${game.turn === actualViewIndex ? 'bg-emerald-400 text-emerald-950' : 'text-emerald-500/50'}`}>
+               <ClipboardList size={12}/> {game.turn === actualViewIndex ? 'あなたのターン' : '手札'}
              </div>
              
              {game.turn === actualViewIndex && currentMode === 'daifugo' && game.currentThemeId && game.phase === 'WAITING' && (
-               <button onClick={()=>handlePassBasic(actualViewIndex)} className="text-[10px] font-black bg-red-500 text-white px-6 py-2 rounded-full border-b-4 border-red-700 active:scale-95 text-white">パス</button>
+               <button onClick={()=>handlePassBasic(actualViewIndex)} className="text-[10px] font-black bg-red-500 text-white px-6 py-2 rounded-full border-b-4 border-red-700 active:scale-95 shadow-md">パス</button>
              )}
              
              {game.phase === 'DOUBT_WINDOW' && game.pending?.playerIndex !== actualViewIndex && (
-               <button onClick={()=>onResolveDoubt(actualViewIndex)} className="text-sm font-black bg-red-600 text-white px-8 py-2 rounded-full border-b-4 border-red-800 active:scale-95 shadow-xl animate-pulse text-white">ダウト！！</button>
+               <button onClick={()=>onResolveDoubt(actualViewIndex)} className="text-sm font-black bg-red-600 text-white px-8 py-2 rounded-full border-b-4 border-red-800 active:scale-95 shadow-xl animate-pulse">ダウト！！</button>
              )}
            </div>
            
-           <div className="flex justify-center items-end space-x-2 h-40 overflow-x-auto pb-4 scrollbar-hide px-2 text-white">
+           <div className="flex justify-center items-end space-x-2 h-40 overflow-x-auto pb-4 scrollbar-hide px-2">
              {cp?.hand.map(c => (
-               <div key={c.id} className={`${game.turn === actualViewIndex && game.phase === 'WAITING' ? 'animate-[bounce_2s_infinite]' : ''}`} style={{animationDelay: `${Math.random()}s`}}>
+               <div key={c.id} className={`${game.turn === actualViewIndex && game.phase === 'WAITING' ? 'animate-[bounce_2s_infinite]' : ''}`}>
                  <CardView 
                    card={c} 
                    activeThemes={['population', 'area']} 
@@ -603,28 +626,28 @@ export default function App() {
            </div>
         </div>
 
-        {/* 判定結果モーダル */}
         {game.phase === 'RESOLUTION' && (
-          <div className="fixed inset-0 bg-black/95 z-[200] flex items-center justify-center p-8 text-center animate-fade-in backdrop-blur-lg text-white">
-            <div className={`p-12 rounded-[56px] border-4 shadow-2xl transform transition-transform ${game.doubtResult.isTruth ? 'bg-emerald-600 border-emerald-400' : 'bg-red-700 border-red-400'} text-white`}>
-              <h2 className="text-7xl font-black mb-6 italic tracking-tighter drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] uppercase text-white">{game.doubtResult.isTruth ? 'SUCCESS!' : 'OUT!'}</h2>
-              <div className="flex flex-col items-center gap-4 mb-8 text-white">
-                 <div className="flex justify-center scale-110 text-white"><CardView card={game.doubtResult.actual} activeThemes={['population', 'area']} highlight={game.currentThemeId} /></div>
-                 <div className="text-white bg-black/20 px-4 py-1 rounded-full font-bold text-xs text-white">本当のカード: {game.doubtResult.actual.name}</div>
+          <div className="fixed inset-0 bg-black/95 z-[200] flex items-center justify-center p-8 text-center animate-fade-in backdrop-blur-lg">
+            <div className={`p-12 rounded-[56px] border-4 shadow-2xl transform transition-transform ${game.doubtResult.isTruth ? 'bg-emerald-600 border-emerald-400' : 'bg-red-700 border-red-400'}`}>
+              <h2 className="text-7xl font-black mb-6 italic tracking-tighter text-white uppercase">{game.doubtResult.isTruth ? '成功！' : '失敗！'}</h2>
+              <div className="flex flex-col items-center gap-4 mb-8">
+                 <div className="flex justify-center scale-110">
+                   <CardView card={game.doubtResult.actual} activeThemes={['population', 'area']} highlight={game.currentThemeId} />
+                 </div>
+                 <div className="text-white bg-black/20 px-4 py-1 rounded-full font-bold text-xs">正解: {game.doubtResult.actual.name}</div>
               </div>
-              <p className="text-white font-black text-xl mb-6 text-white">{game.players[game.doubtResult.loserId].name} は手札が5枚になるまで補充！</p>
-              <button onClick={() => updateGame(prev => ({...prev, phase: 'WAITING', doubtResult: null, fieldCards: [], currentThemeId: null, turn: prev.doubtResult.loserId, message: 'リスタート！属性を選択してください' }))} className="bg-white text-slate-900 px-12 py-4 rounded-full font-black shadow-xl active:scale-95 transition-all text-xl text-slate-900">NEXT ROUND</button>
+              <button onClick={() => updateGame(prev => ({...prev, phase: 'WAITING', doubtResult: null, fieldCards: [], currentThemeId: null, turn: prev.doubtResult.loserId, message: 'リスタート！' }))} className="bg-white text-slate-900 px-12 py-4 rounded-full font-black shadow-xl active:scale-95 transition-all text-xl hover:bg-slate-100 text-emerald-900">次へ</button>
             </div>
           </div>
         )}
 
         {game.phase === 'OVER' && (
-          <div className="fixed inset-0 bg-emerald-950 z-[300] flex flex-col items-center justify-center animate-fade-in text-center p-8 backdrop-blur-xl text-white">
-            <div className="bg-emerald-900/80 p-16 rounded-[64px] border-2 border-emerald-400/30 shadow-[0_0_60px_rgba(0,0,0,0.5)] text-white">
-              <Award size={120} className="text-yellow-400 mb-6 mx-auto animate-bounce drop-shadow-[0_0_20px_rgba(250,204,21,0.5)] text-yellow-400" />
-              <h2 className="text-7xl font-black italic text-white mb-2 tracking-tighter uppercase drop-shadow-md text-white">WINNER!</h2>
-              <h3 className="text-5xl font-black italic text-emerald-400 mb-12 drop-shadow-md text-emerald-400">{game.winner?.name}</h3>
-              <button onClick={() => setStep('MENU')} className="bg-white text-emerald-950 px-16 py-5 rounded-full font-black text-2xl shadow-xl hover:scale-105 text-emerald-950">TITLE</button>
+          <div className="fixed inset-0 bg-emerald-950 z-[300] flex flex-col items-center justify-center animate-fade-in text-center p-8 backdrop-blur-xl">
+            <div className="bg-emerald-900/80 p-16 rounded-[64px] border-2 border-emerald-400/30 shadow-[0_0_60px_rgba(0,0,0,0.5)]">
+              <Award size={120} className="text-yellow-400 mb-6 mx-auto animate-bounce drop-shadow-[0_0_20px_rgba(250,204,21,0.5)]" />
+              <h2 className="text-7xl font-black italic text-white mb-2 tracking-tighter uppercase drop-shadow-md">優勝！</h2>
+              <h3 className="text-5xl font-black italic text-emerald-400 mb-12 drop-shadow-md">{game.winner?.name}</h3>
+              <button onClick={() => setStep('MENU')} className="bg-white text-emerald-950 px-16 py-5 rounded-full font-black text-2xl shadow-xl hover:scale-105 active:scale-95 transition-all text-emerald-900">タイトルへ</button>
             </div>
           </div>
         )}
