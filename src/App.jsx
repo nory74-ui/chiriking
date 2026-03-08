@@ -399,16 +399,27 @@ export default function App() {
       if (prev.phase !== 'DOUBT_WINDOW' || !prev.pending) return prev;
       
       const tid = safeTheme(prev.pending.themeAtPlay);
-      const targetValue = prev.fieldCards.length === 0 ? 0 : (prev.fieldCards[prev.fieldCards.length-1][tid] || 0);
+      
+      // 場が空の時は直前のカードがないため targetValue は 0
+      let targetValue = 0;
+      if (prev.fieldCards && prev.fieldCards.length > 0) {
+        const topCard = prev.fieldCards[prev.fieldCards.length - 1];
+        // 場のカードがダウト経由(declaredPrefあり)ならその数値を、そうでなければ実際の数値を基準にする
+        targetValue = topCard.declaredPref ? (topCard.declaredPref[tid] || 0) : (topCard[tid] || 0);
+      }
       
       const actualValue = prev.pending.card[tid] || 0;
+      
+      // ダウトが失敗(真実である)条件：実際の数値が場のカード以上、かつ宣言したカードと実際のカードが一致
       const isTruth = (actualValue >= targetValue) && (prev.pending.card.id === prev.pending.declaredPref.id);
       
       const loserId = isTruth ? doubterId : prev.pending.playerIndex;
       
       let newHand = [...(prev.players[loserId]?.hand || [])];
-      let currentDeck = [...prev.deck];
-      while (newHand.length < 5 && currentDeck.length > 0) newHand.push(currentDeck.shift());
+      let currentDeck = [...(prev.deck || [])];
+      while (newHand.length < 5 && currentDeck.length > 0) {
+        newHand.push(currentDeck.shift());
+      }
       
       return { 
         ...prev, deck: currentDeck, 
@@ -426,16 +437,20 @@ export default function App() {
     updateGame(prev => {
       if (prev.phase !== 'DOUBT_WINDOW' || !prev.pending) return prev;
       if (prev.players[prev.turn].hand.length === 0) return { ...prev, winner: prev.players[prev.turn], phase: 'OVER' };
+      
+      // ダウトがスルーされた場合、そのカードに「宣言した都道府県(declaredPref)」の情報を付与して場に置く
+      const acceptedCard = { ...prev.pending.card, declaredPref: prev.pending.declaredPref };
+      
       return { 
         ...prev, turn: (prev.turn + 1) % 4, phase: 'WAITING', 
-        fieldCards: [...prev.fieldCards, prev.pending.card], pending: null, message: `誰もダウトしませんでした。` 
+        fieldCards: [...(prev.fieldCards || []), acceptedCard], pending: null, message: `誰もダウトしませんでした。` 
       };
     });
   }, [updateGame]);
 
   useEffect(() => {
     if (!game) return;
-    // タイマー管理の最適化: ゲームの進行状態が変わった時のみ動作
+    // タイマー管理の最適化: ホストのみが進行処理を行う
     const currentHostId = roomData?.host_uid;
     const isMyTurnToHostLogic = !isOnline || currentHostId === user?.uid;
 
@@ -464,7 +479,7 @@ export default function App() {
       if (game.mode === 'daifugo') {
         const tid = safeTheme(game.currentThemeId || cpuTheme);
         const targetValue = game.fieldCards.length === 0 ? 0 : (game.fieldCards[game.fieldCards.length-1][tid] || 0);
-        const playableCards = p.hand.filter(c => c[tid] >= targetValue).sort((a,b)=>a[tid]-b[tid]);
+        const playableCards = p.hand.filter(c => (c[tid] || 0) >= targetValue).sort((a,b)=>(a[tid] || 0)-(b[tid] || 0));
         
         if (playableCards.length > 0) {
           handlePlayBasic(game.turn, playableCards[0], tid);
@@ -507,8 +522,13 @@ export default function App() {
     if (game.mode === 'doubt') return true; 
     
     const tid = safeTheme(game.currentThemeId || pendingTheme);
-    const targetValue = game.fieldCards.length === 0 ? 0 : (game.fieldCards[game.fieldCards.length-1][tid] || 0);
-    return card[tid] >= targetValue;
+    
+    let targetValue = 0;
+    if (game.fieldCards && game.fieldCards.length > 0) {
+      const topCard = game.fieldCards[game.fieldCards.length - 1];
+      targetValue = topCard.declaredPref ? (topCard.declaredPref[tid] || 0) : (topCard[tid] || 0);
+    }
+    return (card[tid] || 0) >= targetValue;
   };
 
   // 端末サイズに合わせたスタイル
@@ -782,14 +802,14 @@ export default function App() {
             <div className="relative w-32 h-44 sm:w-40 sm:h-52 flex items-center justify-center mt-2 sm:mt-4">
               {game.fieldCards.map((c, i) => (
                 <div key={`field-${i}`} className="absolute transform transition-all duration-500 drop-shadow-2xl" style={{ rotate: `${(i*7)%30-15}deg`, zIndex: i }}>
-                  <CardView card={c} activeThemes={['population', 'area']} highlight={game.currentThemeId} faceDown={currentMode === 'doubt'} declaredName={currentMode === 'doubt' ? PREFECTURES.find(p=>p.id===c.id)?.name : null} size="normal" />
+                  <CardView card={c} activeThemes={['population', 'area']} highlight={game.currentThemeId} faceDown={currentMode === 'doubt'} declaredName={currentMode === 'doubt' ? (c.declaredPref?.name || PREFECTURES.find(p=>p.id===c.id)?.name) : null} size="normal" />
                 </div>
               ))}
               
               {/* ダウト判定中のカード描画 */}
               {game.phase === 'DOUBT_WINDOW' && game.pending && (
                 <div className="absolute transform transition-all duration-500 scale-110 -translate-y-4 shadow-2xl" style={{ rotate: `${(game.fieldCards.length*7)%30-15}deg`, zIndex: game.fieldCards.length + 10 }}>
-                  <CardView card={game.pending.card} activeThemes={['population', 'area']} highlight={game.currentThemeId} faceDown={true} declaredName={game.pending.declaredPref.name} size="normal" />
+                  <CardView card={game.pending.card} activeThemes={['population', 'area']} highlight={game.currentThemeId} faceDown={true} declaredName={game.pending.declaredPref?.name} size="normal" />
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none animate-pulse">
                      <div className="bg-red-600 text-white font-black px-4 sm:px-5 py-1.5 sm:py-2 rounded-full shadow-[0_0_20px_rgba(239,68,68,0.8)] text-sm sm:text-lg italic uppercase border-2 border-white flex items-center gap-1">
                        <DoubtIcon size={16} className="sm:w-5 sm:h-5"/> DOUBT?
@@ -874,7 +894,7 @@ export default function App() {
                   .filter(pref => pref.name.includes(searchPrefectureQuery))
                   .sort((a, b) => {
                     const tid = safeTheme(game.currentThemeId || pendingTheme);
-                    return a[tid] - b[tid]; // 勝負属性の昇順でソート
+                    return (a[tid] || 0) - (b[tid] || 0); // 勝負属性の昇順でソート
                   })
                   .map(pref => {
                   const isTruth = pref.id === selectedCardToPlay.id;
@@ -888,7 +908,7 @@ export default function App() {
                     >
                       <span className="text-sm sm:text-lg">{pref.name}</span>
                       <div className="flex items-center gap-2">
-                        <span className={`text-[10px] sm:text-xs font-mono ${isTruth ? 'text-emerald-100' : 'text-emerald-400'}`}>{pref[tid]} <span className="text-[8px] opacity-70">{tdef.unit}</span></span>
+                        <span className={`text-[10px] sm:text-xs font-mono ${isTruth ? 'text-emerald-100' : 'text-emerald-400'}`}>{pref[tid]} <span className="text-[8px] opacity-70">{tdef?.unit}</span></span>
                         {isTruth && <span className="text-[8px] sm:text-[10px] bg-emerald-950/50 text-emerald-200 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full uppercase tracking-widest border border-emerald-400/30">本当</span>}
                       </div>
                     </button>
@@ -920,7 +940,7 @@ export default function App() {
               <div className="flex flex-col items-center gap-3 sm:gap-4 mb-6 sm:mb-10 w-full">
                  <div className="flex justify-center scale-100 sm:scale-110 drop-shadow-xl"><CardView card={game.doubtResult.actual} activeThemes={['population', 'area']} highlight={game.doubtResult.themeUsed} size="normal" /></div>
                  <div className="text-white bg-black/30 px-4 sm:px-6 py-1.5 sm:py-2 rounded-full font-black text-xs sm:text-sm shadow-inner border border-white/10 mt-2 sm:mt-4 flex items-center gap-1.5 sm:gap-2">
-                   <span className="text-white/60 text-[8px] sm:text-[10px] uppercase">正解のカード</span> {game.doubtResult.actual.name}
+                   <span className="text-white/60 text-[8px] sm:text-[10px] uppercase">正解のカード</span> {game.doubtResult.actual?.name}
                  </div>
               </div>
               
