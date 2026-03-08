@@ -1,10 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Users, Map as MapIcon, BarChart, Sprout, Factory, 
-  CloudRain, Activity, Play, RotateCcw, Award, 
-  AlertCircle, ShieldAlert, CheckCircle, XCircle, 
-  ChevronRight, Smartphone, User, Cpu, ThumbsUp,
-  Network, Plus, LogIn, ClipboardList, ShieldAlert as DoubtIcon,
+  Users, Map as MapIcon, Play, Award, 
+  AlertCircle, CheckCircle, XCircle, 
+  User, Plus, ClipboardList, ShieldAlert as DoubtIcon,
   Search, BookOpen
 } from 'lucide-react';
 
@@ -177,7 +175,7 @@ export default function App() {
   const [step, setStep] = useState('MENU');
   const [mode, setMode] = useState('daifugo'); 
   const [playerCount, setPlayerCount] = useState(1);
-  const [activeThemes] = useState(['population', 'area']);
+  const activeThemes = ['population', 'area'];
   const [game, setGame] = useState(null);
   const [pendingTheme, setPendingTheme] = useState('population');
   
@@ -235,7 +233,7 @@ export default function App() {
     let subscription;
     const fetchAndSubscribe = async () => {
       try {
-        const { data, error } = await supabase.from('rooms').select('*').eq('id', roomId).single();
+        const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single();
         if (data) {
           setRoomData(data);
           if (data.game) setGame(data.game);
@@ -268,7 +266,7 @@ export default function App() {
     if (step === 'LOBBY' && roomData?.status === 'playing') setStep('BOARD');
   }, [step, roomData?.status]);
 
-  const updateGame = useCallback(async (updater) => {
+  const updateGame = useCallback((updater) => {
     setGame(prev => {
       if (!prev) return prev;
       const newState = typeof updater === 'function' ? updater(prev) : updater;
@@ -931,4 +929,24 @@ export default function App() {
                 <p className="text-white/70 text-[9px] sm:text-[10px] mt-0.5 sm:mt-1 font-bold">手札が5枚になるまで補充されます</p>
               </div>
 
-              <button onClick={() => updateGame(prev => ({...prev, phase: 'WAITING', doubtResult: null, fieldCards: [], currentThemeId: null, turn: prev.doubtResult.loserId, message: 'リスタート！親は属性を選択' }))} className="w-full bg-white text-slate-900 py-4 sm:py-5 rounded-full font-black shadow-xl active:scale-95 transition-
+              <button onClick={() => updateGame(prev => ({...prev, phase: 'WAITING', doubtResult: null, fieldCards: [], currentThemeId: null, turn: prev.doubtResult.loserId, message: 'リスタート！親は属性を選択' }))} className="w-full bg-white text-slate-900 py-4 sm:py-5 rounded-full font-black shadow-xl active:scale-95 transition-all text-lg sm:text-xl">次のラウンドへ</button>
+            </div>
+          </div>
+        )}
+
+        {/* ゲーム終了 */}
+        {game.phase === 'OVER' && (
+          <div className="fixed inset-0 bg-emerald-950/95 z-[600] flex flex-col items-center justify-center text-center p-4 sm:p-6 backdrop-blur-2xl">
+            <div className="bg-emerald-800/80 p-8 sm:p-12 w-full max-w-sm rounded-[32px] sm:rounded-[48px] border border-emerald-500/30 shadow-[0_0_100px_rgba(16,185,129,0.2)] flex flex-col items-center">
+              <Award size={80} className="text-yellow-400 mb-6 sm:mb-8 mx-auto animate-bounce drop-shadow-[0_0_30px_rgba(250,204,21,0.6)] sm:w-[100px] sm:h-[100px]" />
+              <h2 className="text-2xl sm:text-3xl font-black text-emerald-200 mb-1 sm:mb-2 tracking-widest uppercase">Winner</h2>
+              <h3 className="text-4xl sm:text-6xl font-black italic text-white mb-8 sm:mb-12 drop-shadow-lg">{game.winner?.name}</h3>
+              <button onClick={() => setStep('MENU')} className="w-full bg-emerald-400 hover:bg-emerald-300 text-emerald-950 py-4 sm:py-5 rounded-full font-black text-xl sm:text-2xl shadow-lg active:scale-95 transition-all">タイトルに戻る</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+  return null;
+}
