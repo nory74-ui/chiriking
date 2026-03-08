@@ -92,18 +92,53 @@ const safeTheme = (theme) => ['population', 'area'].includes(theme) ? theme : 'p
 // ==========================================
 // 2. UIコンポーネント
 // ==========================================
-const CardView = ({ card, activeThemes, faceDown, selectable, onClick, highlight, size = 'large', declaredName }) => {
-  // SSRクラッシュを避けるため、window.innerWidthの代わりにsizeプロパティでCSSクラスを切り替え
-  const baseClasses = "rounded-xl shadow-lg border-2 flex flex-col items-center justify-between relative transition-all duration-200";
-  const sizeClasses = size === 'small' ? "w-12 h-16 sm:w-16 sm:h-24 p-1 sm:p-1.5" : "w-24 h-36 sm:w-32 sm:h-48 p-1.5 sm:p-2";
+const CardView = ({ card, activeThemes, faceDown, selectable, onClick, highlight, size = 'normal', declaredName }) => {
+  const baseClasses = "rounded-xl shadow-lg border-2 flex flex-col items-center justify-between relative transition-all duration-200 shrink-0";
   
+  // CSSクラスで確実に読めるフォントサイズを定義
+  let sz;
+  if (size === 'small') {
+    sz = {
+      card: "w-20 h-28 sm:w-24 sm:h-36 p-1.5 sm:p-2",
+      id: "text-[8px] sm:text-[10px]",
+      name: "text-sm sm:text-lg",
+      attr: "text-[9px] sm:text-[11px] px-1 sm:px-1.5 py-0.5 sm:py-1",
+      icon: 10,
+      unit: "text-[7px] sm:text-[8px]",
+      back: "text-[12px] sm:text-[14px]",
+      declared: "text-[8px] sm:text-[10px] px-2 py-0.5 bottom-2"
+    };
+  } else if (size === 'large') {
+    sz = {
+      card: "w-32 h-48 sm:w-40 sm:h-56 p-3 sm:p-4",
+      id: "text-xs sm:text-sm",
+      name: "text-2xl sm:text-3xl",
+      attr: "text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2",
+      icon: 14,
+      unit: "text-[10px] sm:text-xs",
+      back: "text-[18px] sm:text-[24px]",
+      declared: "text-xs sm:text-sm px-3 py-1 bottom-4"
+    };
+  } else {
+    sz = {
+      card: "w-24 h-36 sm:w-28 sm:h-40 p-2 sm:p-2.5",
+      id: "text-[10px] sm:text-xs",
+      name: "text-lg sm:text-xl",
+      attr: "text-[11px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5",
+      icon: 12,
+      unit: "text-[8px] sm:text-[9px]",
+      back: "text-[14px] sm:text-[18px]",
+      declared: "text-[10px] sm:text-xs px-2.5 py-0.5 bottom-3"
+    };
+  }
+
   if (faceDown) {
     return (
-      <div className={`${baseClasses} ${sizeClasses} bg-emerald-900 border-emerald-400/30 text-white hover:scale-105 cursor-default`}>
+      <div className={`${baseClasses} ${sz.card} bg-emerald-900 border-emerald-400/30 text-white hover:scale-105 cursor-default`}>
         <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-emerald-400 to-transparent" />
-        <div className={`${size === 'small' ? 'text-[6px] sm:text-[8px]' : 'text-[10px] sm:text-[14px]'} font-black italic tracking-widest uppercase transform -rotate-45 opacity-50 mb-2 drop-shadow-md`}>ChiriKing</div>
+        <div className={`${sz.back} font-black italic tracking-widest uppercase transform -rotate-45 opacity-50 mb-2 drop-shadow-md`}>ChiriKing</div>
         {declaredName && (
-          <div className="bg-red-600/90 border border-red-400 px-2 py-0.5 rounded-full text-[7px] sm:text-[10px] font-black text-white absolute bottom-2 whitespace-nowrap shadow-lg animate-pulse">{declaredName}</div>
+          <div className={`bg-red-600/90 border border-red-400 ${sz.declared} rounded-full font-black text-white absolute whitespace-nowrap shadow-lg animate-pulse`}>{declaredName}</div>
         )}
       </div>
     );
@@ -115,15 +150,15 @@ const CardView = ({ card, activeThemes, faceDown, selectable, onClick, highlight
   return (
     <div 
       onClick={() => selectable && onClick && onClick(card)} 
-      className={`${baseClasses} ${sizeClasses} bg-white text-slate-800 ${selectable ? 'cursor-pointer hover:-translate-y-3 border-emerald-500 ring-4 ring-emerald-200 shadow-emerald-500/50' : 'opacity-60 border-slate-300 grayscale-[0.5]'}`}
+      className={`${baseClasses} ${sz.card} bg-white text-slate-800 ${selectable ? 'cursor-pointer hover:-translate-y-3 border-emerald-500 ring-4 ring-emerald-200 shadow-emerald-500/50' : 'opacity-60 border-slate-300 grayscale-[0.5]'}`}
     >
-      <div className="text-[6px] sm:text-[9px] text-slate-400 w-full text-left font-bold italic px-1">No.{card.id}</div>
-      <div className={`${size === 'small' ? 'text-[8px] sm:text-[11px]' : 'text-base sm:text-xl'} font-black text-center tracking-tighter leading-tight drop-shadow-sm flex-1 flex items-center justify-center break-words w-full`}>{card.name}</div>
+      <div className={`${sz.id} text-slate-400 w-full text-left font-bold italic px-1`}>No.{card.id}</div>
+      <div className={`${sz.name} font-black text-center tracking-tighter leading-tight drop-shadow-sm flex-1 flex items-center justify-center break-words w-full`}>{card.name}</div>
       <div className="flex flex-col w-full space-y-0.5 sm:space-y-1 mb-1">
         {themes.map(t => (
-          <div key={t.id} className={`flex justify-between items-center px-1 sm:px-1.5 py-0.5 sm:py-1 rounded ${size === 'small' ? 'text-[6px] sm:text-[8px]' : 'text-[9px] sm:text-[11px]'} ${highlight === t.id ? 'bg-emerald-600 text-white font-black shadow-inner scale-105' : 'text-slate-600 bg-slate-100 font-bold'}`}>
-            <span className="flex items-center gap-0.5 whitespace-nowrap"><t.icon size={size === 'small' ? 8 : 12} className={highlight === t.id ? "text-white" : t.color}/>{t.name}</span>
-            <span className="whitespace-nowrap truncate pl-0.5 sm:pl-1">{card[t.id]}<span className="text-[5px] sm:text-[7px] opacity-80 ml-0.5">{t.unit}</span></span>
+          <div key={t.id} className={`flex justify-between items-center ${sz.attr} rounded ${highlight === t.id ? 'bg-emerald-600 text-white font-black shadow-inner scale-105' : 'text-slate-600 bg-slate-100 font-bold'}`}>
+            <span className="flex items-center gap-0.5 whitespace-nowrap"><t.icon size={sz.icon} className={highlight === t.id ? "text-white" : t.color}/></span>
+            <span className="whitespace-nowrap truncate pl-0.5 sm:pl-1 flex-1 text-right">{card[t.id]}<span className={`${sz.unit} opacity-80 ml-0.5`}>{t.unit}</span></span>
           </div>
         ))}
       </div>
@@ -287,7 +322,7 @@ export default function App() {
       }));
       setGame({
         mode, players, turn: 0, fieldCards: [], currentThemeId: null, winner: null, phase: 'WAITING',
-        message: 'ゲームスタート！勝負属性を選んでカードを出してください。', deck: deck.slice(20), lastPlayedIdx: 0
+        message: 'ゲームスタート！勝負属性を選んでカードを出してください。', deck: deck.slice(20)
       });
       setStep('BOARD');
     }
@@ -303,7 +338,7 @@ export default function App() {
     }));
     const initialGame = {
       mode, players, turn: 0, fieldCards: [], currentThemeId: null, winner: null, phase: 'WAITING',
-      message: 'ゲームスタート！親は属性を選んでください。', deck: deck.slice(20), lastPlayedIdx: 0
+      message: 'ゲームスタート！親は属性を選んでください。', deck: deck.slice(20)
     };
     await supabase.from('rooms').update({ status: 'playing', game: initialGame }).eq('id', roomId);
   };
@@ -749,14 +784,14 @@ export default function App() {
             <div className="relative w-32 h-44 sm:w-40 sm:h-52 flex items-center justify-center mt-2 sm:mt-4">
               {game.fieldCards.map((c, i) => (
                 <div key={`field-${i}`} className="absolute transform transition-all duration-500 drop-shadow-2xl" style={{ rotate: `${(i*7)%30-15}deg`, zIndex: i }}>
-                  <CardView card={c} activeThemes={['population', 'area']} highlight={game.currentThemeId} faceDown={currentMode === 'doubt'} declaredName={currentMode === 'doubt' ? PREFECTURES.find(p=>p.id===c.id)?.name : null} size="large" />
+                  <CardView card={c} activeThemes={['population', 'area']} highlight={game.currentThemeId} faceDown={currentMode === 'doubt'} declaredName={currentMode === 'doubt' ? PREFECTURES.find(p=>p.id===c.id)?.name : null} size="normal" />
                 </div>
               ))}
               
               {/* ダウト判定中のカード描画 */}
               {game.phase === 'DOUBT_WINDOW' && game.pending && (
                 <div className="absolute transform transition-all duration-500 scale-110 -translate-y-4 shadow-2xl" style={{ rotate: `${(game.fieldCards.length*7)%30-15}deg`, zIndex: game.fieldCards.length + 10 }}>
-                  <CardView card={game.pending.card} activeThemes={['population', 'area']} highlight={game.currentThemeId} faceDown={true} declaredName={game.pending.declaredPref.name} size="large" />
+                  <CardView card={game.pending.card} activeThemes={['population', 'area']} highlight={game.currentThemeId} faceDown={true} declaredName={game.pending.declaredPref.name} size="normal" />
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none animate-pulse">
                      <div className="bg-red-600 text-white font-black px-4 sm:px-5 py-1.5 sm:py-2 rounded-full shadow-[0_0_20px_rgba(239,68,68,0.8)] text-sm sm:text-lg italic uppercase border-2 border-white flex items-center gap-1">
                        <DoubtIcon size={16} className="sm:w-5 sm:h-5"/> DOUBT?
@@ -766,8 +801,8 @@ export default function App() {
               )}
               
               {game.fieldCards.length === 0 && !game.pending && (
-                <div className="w-24 h-36 sm:w-32 sm:h-44 border-2 sm:border-4 border-dashed border-emerald-700/30 rounded-xl sm:rounded-2xl flex items-center justify-center">
-                  <span className="text-emerald-700/40 font-black italic text-xl sm:text-3xl uppercase tracking-widest">Field</span>
+                <div className="w-24 h-36 sm:w-28 sm:h-40 border-2 sm:border-4 border-dashed border-emerald-700/30 rounded-xl sm:rounded-2xl flex items-center justify-center">
+                  <span className="text-emerald-700/40 font-black italic text-xl sm:text-2xl uppercase tracking-widest">Field</span>
                 </div>
               )}
             </div>
@@ -775,8 +810,8 @@ export default function App() {
         </div>
 
         {/* 自分の手札セクション */}
-        <div className={`h-52 sm:h-64 w-full border-t-2 p-2 sm:p-4 pb-6 sm:pb-10 shrink-0 shadow-[0_-20px_50px_rgba(0,0,0,0.5)] z-50 backdrop-blur-2xl relative transition-colors duration-500 ${game.turn === actualViewIndex ? 'bg-emerald-800/90 border-emerald-400' : 'bg-emerald-950/95 border-emerald-900'}`}>
-           <div className="flex justify-between items-center mb-3 sm:mb-5 max-w-lg mx-auto relative px-2 sm:px-0">
+        <div className={`h-48 sm:h-56 w-full flex flex-col border-t-2 p-2 sm:p-4 pb-2 sm:pb-4 shrink-0 shadow-[0_-20px_50px_rgba(0,0,0,0.5)] z-50 backdrop-blur-2xl relative transition-colors duration-500 ${game.turn === actualViewIndex ? 'bg-emerald-800/90 border-emerald-400' : 'bg-emerald-950/95 border-emerald-900'}`}>
+           <div className="flex justify-between items-center mb-2 sm:mb-4 max-w-lg mx-auto w-full relative px-2 sm:px-0 shrink-0">
              <div className={`text-[9px] sm:text-[10px] font-black italic uppercase flex items-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-1 sm:py-1.5 rounded-full shadow-inner ${game.turn === actualViewIndex ? 'bg-emerald-400 text-emerald-950 shadow-emerald-300' : 'bg-emerald-900 text-emerald-600'}`}>
                <ClipboardList size={12} className="sm:w-3.5 sm:h-3.5"/> {game.turn === actualViewIndex ? 'YOUR TURN' : 'HAND'}
              </div>
@@ -793,23 +828,25 @@ export default function App() {
              {cp?.passed && <span className="text-[9px] sm:text-[10px] font-black text-slate-400 bg-slate-800/50 px-2.5 sm:px-3 py-1 rounded-full uppercase tracking-widest italic border border-slate-700">PASS中</span>}
            </div>
            
-           <div className="flex justify-center items-end space-x-1.5 sm:space-x-2 h-36 sm:h-40 overflow-x-auto scrollbar-hide px-2 sm:px-4 pb-2">
-             {cp?.hand.map(c => {
-               const selectable = canPlayCard(c);
-               return (
-                 <div key={c.id} className={`${game.turn === actualViewIndex && game.phase === 'WAITING' && selectable ? 'animate-[bounce_2s_infinite]' : ''}`} style={{animationDelay: `${Math.random()}s`}}>
-                   <CardView 
-                     card={c} 
-                     activeThemes={['population', 'area']} 
-                     selectable={selectable} 
-                     onClick={() => currentMode === 'daifugo' ? handlePlayBasic(actualViewIndex, c, safeTheme(game.currentThemeId || pendingTheme)) : handleDoubtPlayClick(c)} 
-                     highlight={safeTheme(game.currentThemeId || pendingTheme)} 
-                     size="small"
-                   />
-                 </div>
-               );
-             })}
-             {cp?.hand.length === 0 && <div className="text-emerald-700/50 font-black italic text-xl sm:text-2xl h-full flex items-center uppercase tracking-widest">No Cards</div>}
+           <div className="flex-1 w-full overflow-x-auto overflow-y-hidden scrollbar-hide px-2">
+             <div className="flex items-end space-x-1.5 sm:space-x-2 h-full mx-auto w-max min-w-full justify-center pb-2">
+               {cp?.hand.map(c => {
+                 const selectable = canPlayCard(c);
+                 return (
+                   <div key={c.id} className={`${game.turn === actualViewIndex && game.phase === 'WAITING' && selectable ? 'animate-[bounce_2s_infinite]' : ''}`} style={{animationDelay: `${Math.random()}s`}}>
+                     <CardView 
+                       card={c} 
+                       activeThemes={['population', 'area']} 
+                       selectable={selectable} 
+                       onClick={() => currentMode === 'daifugo' ? handlePlayBasic(actualViewIndex, c, safeTheme(game.currentThemeId || pendingTheme)) : handleDoubtPlayClick(c)} 
+                       highlight={safeTheme(game.currentThemeId || pendingTheme)} 
+                       size="small"
+                     />
+                   </div>
+                 );
+               })}
+               {cp?.hand.length === 0 && <div className="text-emerald-700/50 font-black italic text-xl sm:text-2xl h-full flex items-center justify-center uppercase tracking-widest w-full">No Cards</div>}
+             </div>
            </div>
         </div>
 
@@ -819,7 +856,7 @@ export default function App() {
             <h2 className="text-lg sm:text-2xl font-black text-emerald-300 mb-4 sm:mb-6 drop-shadow-md">どの都道府県として出しますか？</h2>
             
             <div className="mb-4 sm:mb-8 flex justify-center scale-100 sm:scale-110 drop-shadow-2xl">
-              <CardView card={selectedCardToPlay} activeThemes={['population', 'area']} highlight={safeTheme(game.currentThemeId || pendingTheme)} size="large" />
+              <CardView card={selectedCardToPlay} activeThemes={['population', 'area']} highlight={safeTheme(game.currentThemeId || pendingTheme)} size="normal" />
             </div>
 
             <div className="w-full max-w-sm bg-emerald-900/50 p-3 sm:p-5 rounded-[24px] sm:rounded-[32px] border border-emerald-500/20 shadow-2xl">
@@ -883,7 +920,7 @@ export default function App() {
               </h2>
               
               <div className="flex flex-col items-center gap-3 sm:gap-4 mb-6 sm:mb-10 w-full">
-                 <div className="flex justify-center scale-100 sm:scale-110 drop-shadow-xl"><CardView card={game.doubtResult.actual} activeThemes={['population', 'area']} highlight={game.doubtResult.themeUsed} size="large" /></div>
+                 <div className="flex justify-center scale-100 sm:scale-110 drop-shadow-xl"><CardView card={game.doubtResult.actual} activeThemes={['population', 'area']} highlight={game.doubtResult.themeUsed} size="normal" /></div>
                  <div className="text-white bg-black/30 px-4 sm:px-6 py-1.5 sm:py-2 rounded-full font-black text-xs sm:text-sm shadow-inner border border-white/10 mt-2 sm:mt-4 flex items-center gap-1.5 sm:gap-2">
                    <span className="text-white/60 text-[8px] sm:text-[10px] uppercase">正解のカード</span> {game.doubtResult.actual.name}
                  </div>
@@ -894,24 +931,4 @@ export default function App() {
                 <p className="text-white/70 text-[9px] sm:text-[10px] mt-0.5 sm:mt-1 font-bold">手札が5枚になるまで補充されます</p>
               </div>
 
-              <button onClick={() => updateGame(prev => ({...prev, phase: 'WAITING', doubtResult: null, fieldCards: [], currentThemeId: null, turn: prev.doubtResult.loserId, message: 'リスタート！親は属性を選択' }))} className="w-full bg-white text-slate-900 py-4 sm:py-5 rounded-full font-black shadow-xl active:scale-95 transition-all text-lg sm:text-xl">次のラウンドへ</button>
-            </div>
-          </div>
-        )}
-
-        {/* ゲーム終了 */}
-        {game.phase === 'OVER' && (
-          <div className="fixed inset-0 bg-emerald-950/95 z-[600] flex flex-col items-center justify-center text-center p-4 sm:p-6 backdrop-blur-2xl">
-            <div className="bg-emerald-800/80 p-8 sm:p-12 w-full max-w-sm rounded-[32px] sm:rounded-[48px] border border-emerald-500/30 shadow-[0_0_100px_rgba(16,185,129,0.2)] flex flex-col items-center">
-              <Award size={80} className="text-yellow-400 mb-6 sm:mb-8 mx-auto animate-bounce drop-shadow-[0_0_30px_rgba(250,204,21,0.6)] sm:w-[100px] sm:h-[100px]" />
-              <h2 className="text-2xl sm:text-3xl font-black text-emerald-200 mb-1 sm:mb-2 tracking-widest uppercase">Winner</h2>
-              <h3 className="text-4xl sm:text-6xl font-black italic text-white mb-8 sm:mb-12 drop-shadow-lg">{game.winner?.name}</h3>
-              <button onClick={() => setStep('MENU')} className="w-full bg-emerald-400 hover:bg-emerald-300 text-emerald-950 py-4 sm:py-5 rounded-full font-black text-xl sm:text-2xl shadow-lg active:scale-95 transition-all">タイトルに戻る</button>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-  return null;
-}
+              <button onClick={() => updateGame(prev => ({...prev, phase: 'WAITING', doubtResult: null, fieldCards: [], currentThemeId: null, turn: prev.doubtResult.loserId, message: 'リスタート！親は属性を選択' }))} className="w-full bg-white text-slate-900 py-4 sm:py-5 rounded-full font-black shadow-xl active:scale-95 transition-
