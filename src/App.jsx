@@ -150,6 +150,11 @@ export default function App() {
   const [joinRoomIdInput, setJoinRoomIdInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
+  // ダウトモード用：嘘の宣言モーダル表示ステート
+  const [showDeclareModal, setShowDeclareModal] = useState(false);
+  const [selectedCardToPlay, setSelectedCardToPlay] = useState(null);
+  const [searchPrefectureQuery, setSearchPrefectureQuery] = useState('');
+
   // 初期化
   useEffect(() => {
     const checkScripts = () => {
@@ -301,17 +306,31 @@ export default function App() {
     });
   };
 
-  const onDoubtPlay = (card, declaredPref, theme = null) => updateGame(prev => {
-    const tid = prev.currentThemeId || theme || pendingTheme;
-    return {
-      ...prev, 
-      players: prev.players.map((p, i) => i === prev.turn ? { ...p, hand: p.hand.filter(c => c.id !== card.id) } : p), 
-      pending: { card, declaredPref, playerIndex: prev.turn, themeAtPlay: tid }, 
-      currentThemeId: tid,
-      phase: 'DOUBT_WINDOW',
-      message: `${prev.players[prev.turn].name}が「${declaredPref.name}」を宣言！`
-    };
-  });
+  // ダウトモードでカードをクリックした時の処理（嘘の宣言モーダルを表示）
+  const handleDoubtPlayClick = (card) => {
+    setSelectedCardToPlay(card);
+    setShowDeclareModal(true);
+  };
+
+  // 嘘の宣言を確定してカードを出す処理
+  const executeDoubtPlay = (declaredPref) => {
+    setShowDeclareModal(false);
+    const cardToPlay = selectedCardToPlay;
+    setSelectedCardToPlay(null);
+    setSearchPrefectureQuery('');
+
+    updateGame(prev => {
+      const tid = prev.currentThemeId || pendingTheme;
+      return {
+        ...prev, 
+        players: prev.players.map((p, i) => i === prev.turn ? { ...p, hand: p.hand.filter(c => c.id !== cardToPlay.id) } : p), 
+        pending: { card: cardToPlay, declaredPref, playerIndex: prev.turn, themeAtPlay: tid }, 
+        currentThemeId: tid,
+        phase: 'DOUBT_WINDOW',
+        message: `${prev.players[prev.turn].name}が「${declaredPref.name}」を宣言！`
+      };
+    });
+  };
 
   const onResolveDoubt = (doubterId) => {
     updateGame(prev => {
@@ -374,7 +393,27 @@ export default function App() {
           if (v) handlePlayBasic(game.turn, v); else handlePassBasic(game.turn);
         }
       } else {
-        onDoubtPlay(p.hand[0], p.hand[0], game.currentThemeId || cpuTheme);
+        // CPUのダウトモードロジック：基本は本当のことを言うが、たまに嘘の宣言をする（20%の確率）
+        const isLying = Math.random() < 0.2;
+        const actualCard = p.hand[0];
+        let declaredPref = actualCard;
+        
+        if (isLying) {
+          const possibleLies = PREFECTURES.filter(pref => pref.id !== actualCard.id);
+          declaredPref = possibleLies[Math.floor(Math.random() * possibleLies.length)];
+        }
+        
+        updateGame(prev => {
+          const tid = prev.currentThemeId || cpuTheme;
+          return {
+            ...prev, 
+            players: prev.players.map((pl, i) => i === prev.turn ? { ...pl, hand: pl.hand.filter(c => c.id !== actualCard.id) } : pl), 
+            pending: { card: actualCard, declaredPref, playerIndex: prev.turn, themeAtPlay: tid }, 
+            currentThemeId: tid,
+            phase: 'DOUBT_WINDOW',
+            message: `${prev.players[prev.turn].name}が「${declaredPref.name}」を宣言！`
+          };
+        });
       }
     }, 1500);
     return () => clearTimeout(t);
@@ -556,11 +595,59 @@ export default function App() {
            <div className="flex justify-center items-end space-x-2 h-40 overflow-x-auto scrollbar-hide px-2">
              {cp?.hand.map(c => (
                <div key={c.id} className={`${game.turn === actualViewIndex && game.phase === 'WAITING' ? 'animate-[bounce_2s_infinite]' : ''}`}>
-                 <CardView card={c} activeThemes={['population', 'area']} selectable={game.turn === actualViewIndex && game.phase === 'WAITING'} onClick={() => currentMode === 'daifugo' ? handlePlayBasic(actualViewIndex, c, game.currentThemeId || pendingTheme) : onDoubtPlay(c, c, game.currentThemeId || pendingTheme)} highlight={game.currentThemeId || pendingTheme} />
+                 <CardView card={c} activeThemes={['population', 'area']} selectable={game.turn === actualViewIndex && game.phase === 'WAITING'} onClick={() => currentMode === 'daifugo' ? handlePlayBasic(actualViewIndex, c, game.currentThemeId || pendingTheme) : handleDoubtPlayClick(c)} highlight={game.currentThemeId || pendingTheme} />
                </div>
              ))}
            </div>
         </div>
+
+        {/* 嘘の宣言用モーダル */}
+        {showDeclareModal && selectedCardToPlay && (
+          <div className="fixed inset-0 bg-black/90 z-[400] flex flex-col items-center justify-center p-4 text-center animate-fade-in backdrop-blur-md">
+            <h2 className="text-2xl font-black text-white mb-6">どの都道府県として出しますか？</h2>
+            
+            <div className="mb-6 flex justify-center">
+              <CardView card={selectedCardToPlay} activeThemes={['population', 'area']} />
+            </div>
+
+            <div className="w-full max-w-sm bg-emerald-900/80 p-4 rounded-3xl border border-white/20 shadow-2xl">
+              <div className="relative mb-4">
+                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-400" />
+                <input 
+                  type="text" 
+                  placeholder="都道府県を検索..." 
+                  value={searchPrefectureQuery}
+                  onChange={(e) => setSearchPrefectureQuery(e.target.value)}
+                  className="w-full bg-emerald-950/50 text-white pl-12 pr-4 py-3 rounded-xl font-bold focus:ring-2 ring-emerald-400 outline-none"
+                />
+              </div>
+
+              <div className="h-48 overflow-y-auto rounded-xl bg-emerald-950/30 p-2 space-y-2">
+                {/* 検索に一致する都道府県をフィルタリング */}
+                {PREFECTURES.filter(pref => pref.name.includes(searchPrefectureQuery)).map(pref => (
+                  <button 
+                    key={pref.id}
+                    onClick={() => executeDoubtPlay(pref)}
+                    className="w-full text-left px-4 py-3 bg-emerald-800/50 hover:bg-emerald-600 rounded-lg text-white font-bold transition-colors flex justify-between items-center"
+                  >
+                    <span>{pref.name}</span>
+                    {pref.id === selectedCardToPlay.id && <span className="text-[10px] bg-emerald-500 text-emerald-950 px-2 py-0.5 rounded-full">本当</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button 
+              onClick={() => {
+                setShowDeclareModal(false);
+                setSelectedCardToPlay(null);
+              }} 
+              className="mt-6 text-sm font-bold text-slate-400 underline"
+            >
+              キャンセル
+            </button>
+          </div>
+        )}
 
         {game.phase === 'RESOLUTION' && game.doubtResult && (
           <div className="fixed inset-0 bg-black/95 z-[200] flex items-center justify-center p-8 text-center animate-fade-in backdrop-blur-lg">
