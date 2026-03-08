@@ -7,6 +7,17 @@ import {
   Network, Plus, LogIn, ClipboardList
 } from 'lucide-react';
 
+// Tailwind CSSを動的に読み込む（プレビュー環境でのデザイン崩れ防止用）
+const loadTailwind = () => {
+  if (!document.getElementById('tailwind-script')) {
+    const script = document.createElement('script');
+    script.id = 'tailwind-script';
+    script.src = 'https://cdn.tailwindcss.com';
+    document.head.appendChild(script);
+  }
+};
+loadTailwind();
+
 // ==========================================
 // 1. 都道府県データ
 // ==========================================
@@ -76,9 +87,9 @@ const THEME_DEFS = {
 const CardView = ({ card, activeThemes, faceDown, selectable, onClick, highlight, small }) => {
   if (faceDown) {
     return (
-      <div className={`${small ? 'w-10 h-14 sm:w-16 sm:h-24' : 'w-20 h-28 sm:w-24 sm:h-36'} bg-blue-900 rounded-lg shadow-md border-2 border-white flex items-center justify-center relative overflow-hidden`}>
+      <div className={`${small ? 'w-10 h-14 sm:w-16 sm:h-24' : 'w-20 h-28 sm:w-24 sm:h-36'} bg-emerald-900 rounded-lg shadow-md border-2 border-white/20 flex items-center justify-center relative overflow-hidden`}>
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white to-transparent" />
-        <div className="text-white/30 text-[7px] sm:text-[10px] font-serif italic font-bold transform -rotate-45 tracking-tighter uppercase text-center">ChiriKing</div>
+        <div className="text-white/30 text-[7px] sm:text-[10px] font-black italic tracking-tighter uppercase transform -rotate-45">ChiriKing</div>
       </div>
     );
   }
@@ -91,14 +102,14 @@ const CardView = ({ card, activeThemes, faceDown, selectable, onClick, highlight
       className={`
         ${small ? 'w-14 h-20 sm:w-20 sm:h-28' : 'w-20 h-28 sm:w-24 sm:h-36'} 
         bg-white rounded-lg shadow-md border border-slate-300 flex flex-col items-center justify-between p-1 sm:p-2 relative transition-all
-        ${selectable ? 'cursor-pointer hover:-translate-y-2 border-blue-400 ring-2 ring-blue-100' : 'opacity-90'}
+        ${selectable ? 'cursor-pointer hover:-translate-y-2 border-emerald-400 ring-2 ring-emerald-100' : 'opacity-90'}
       `}
     >
       <div className="text-[7px] sm:text-[8px] text-slate-400 w-full text-left font-serif italic">No.{card.id}</div>
       <div className="text-xs sm:text-base font-black text-slate-800 text-center tracking-tighter leading-tight">{card.name}</div>
       <div className="flex flex-col w-full space-y-0.5">
         {themes.map(t => (
-          <div key={t.id} className={`flex justify-between items-center px-1 rounded-sm text-[7px] sm:text-[9px] ${highlight === t.id ? 'bg-slate-800 text-white font-bold shadow-inner' : 'text-slate-500 bg-slate-50'}`}>
+          <div key={t.id} className={`flex justify-between items-center px-1 rounded-sm text-[7px] sm:text-[9px] ${highlight === t.id ? 'bg-emerald-800 text-white font-bold shadow-inner' : 'text-slate-500 bg-slate-50'}`}>
             <span className="flex items-center"><t.icon size={8} className="mr-0.5 sm:size-10"/>{t.name}</span>
             <span>{card[t.id]}<span className="text-[5px] sm:text-[6px] opacity-70 ml-0.5">{t.unit}</span></span>
           </div>
@@ -126,6 +137,8 @@ export default function App() {
   const [myPlayerIndex, setMyPlayerIndex] = useState(0);
   const [joinRoomIdInput, setJoinRoomIdInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  const doubtTimerRef = useRef(null);
 
   // ビルドエラー回避のため、Supabaseを動的に読み込む
   useEffect(() => {
