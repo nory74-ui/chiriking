@@ -4,22 +4,34 @@ import {
   CloudRain, Activity, Play, RotateCcw, Award, 
   AlertCircle, ShieldAlert, CheckCircle, XCircle, 
   ChevronRight, Smartphone, User, Cpu, ThumbsUp,
-  Network, Plus, LogIn, ClipboardList
+  Network, Plus, LogIn, ClipboardList, ShieldAlert as DoubtIcon
 } from 'lucide-react';
 
-// Tailwind CSSを動的に読み込む（プレビュー環境でのデザイン崩れ防止用）
-const loadTailwind = () => {
-  if (typeof document !== 'undefined' && !document.getElementById('tailwind-script')) {
-    const script = document.createElement('script');
-    script.id = 'tailwind-script';
-    script.src = 'https://cdn.tailwindcss.com';
-    document.head.appendChild(script);
-  }
+/**
+ * Tailwind CSS & Supabase Dynamic Loader
+ * プレビュー環境と本番環境の両方で動作するように、外部スクリプトを動的にロードします。
+ */
+const useExternalScripts = () => {
+  useEffect(() => {
+    // Tailwind
+    if (!document.getElementById('tailwind-cdn')) {
+      const script = document.createElement('script');
+      script.id = 'tailwind-cdn';
+      script.src = 'https://cdn.tailwindcss.com';
+      document.head.appendChild(script);
+    }
+    // Supabase
+    if (!document.getElementById('supabase-cdn')) {
+      const script = document.createElement('script');
+      script.id = 'supabase-cdn';
+      script.src = 'https://unpkg.com/@supabase/supabase-js@2';
+      document.head.appendChild(script);
+    }
+  }, []);
 };
-loadTailwind();
 
 // ==========================================
-// 1. 都道府県データ
+// 1. 都道府県データ（統計概数）
 // ==========================================
 const PREFECTURES = [
   { id: 1, name: '北海道', population: 506, area: 83424, density: 60, agriculture: 13500, industry: 65000, precipitation: 1100, agingRate: 33.5 },
@@ -45,7 +57,7 @@ const PREFECTURES = [
   { id: 21, name: '岐阜県', population: 193, area: 10621, density: 181, agriculture: 1000, industry: 58000, precipitation: 1950, agingRate: 31.3 },
   { id: 22, name: '静岡県', population: 355, area: 7777, density: 456, agriculture: 2100, industry: 165000, precipitation: 2400, agingRate: 30.8 },
   { id: 23, name: '愛知県', population: 748, area: 5172, density: 1446, agriculture: 3000, industry: 480000, precipitation: 1550, agingRate: 26.2 },
-  { id: 24, name: '三重県', population: 172, area: 5774, density: 297, agriculture: 1000, industry: 110000, precipitation: 2100, agingRate: 31.0 },
+  { id: 24, name: '三重県', population: 172, area: 5774, density: 297, agriculture: 1000, industry: 11000, precipitation: 2100, agingRate: 31.0 },
   { id: 25, name: '滋賀県', population: 140, area: 4017, density: 348, agriculture: 400, industry: 75000, precipitation: 1650, agingRate: 27.2 },
   { id: 26, name: '京都府', population: 253, area: 4612, density: 548, agriculture: 600, industry: 53000, precipitation: 1550, agingRate: 29.8 },
   { id: 27, name: '大阪府', population: 878, area: 1905, density: 4608, agriculture: 300, industry: 165000, precipitation: 1350, agingRate: 28.4 },
@@ -123,14 +135,14 @@ const CardView = ({ card, activeThemes, faceDown, selectable, onClick, highlight
 // 3. アプリケーション本体
 // ==========================================
 export default function App() {
+  useExternalScripts();
+  
   const [supabase, setSupabase] = useState(null);
   const [step, setStep] = useState('MENU');
   const [mode, setMode] = useState('daifugo'); 
   const [playerCount, setPlayerCount] = useState(1);
   const [activeThemes, setActiveThemes] = useState(['population', 'area']);
   const [game, setGame] = useState(null);
-  
-  // 場が空の時に親が選ぶ属性
   const [pendingTheme, setPendingTheme] = useState(null);
   
   const [user, setUser] = useState(null);
@@ -141,40 +153,41 @@ export default function App() {
   const [joinRoomIdInput, setJoinRoomIdInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // 1. 一時ID生成と属性初期化
+  // クライアントサイドでの一時ID生成
   useEffect(() => {
     const uid = Math.random().toString(36).substring(2, 15);
     setUser({ uid });
   }, []);
 
+  // 初期属性のセット
   useEffect(() => {
     if (activeThemes && activeThemes.length > 0) {
       setPendingTheme(activeThemes[0]);
     }
   }, [activeThemes]);
 
-  // 2. Supabaseの動的読み込み
+  // Supabase初期化
   useEffect(() => {
-    let url = '';
-    let key = '';
-    try {
-      url = import.meta.env.VITE_SUPABASE_URL || '';
-      key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-    } catch (e) {}
-    if (!url || !key) return;
-    if (window.supabase) {
-      setSupabase(window.supabase.createClient(url, key));
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/@supabase/supabase-js@2';
-    script.onload = () => {
-      if (window.supabase) setSupabase(window.supabase.createClient(url, key));
+    const initSupabase = () => {
+      let url = '';
+      let key = '';
+      try {
+        url = import.meta.env.VITE_SUPABASE_URL || '';
+        key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+      } catch (e) {}
+      
+      if (!url || !key) return;
+
+      if (window.supabase) {
+        setSupabase(window.supabase.createClient(url, key));
+      } else {
+        setTimeout(initSupabase, 500);
+      }
     };
-    document.head.appendChild(script);
+    initSupabase();
   }, []);
 
-  // 3. Supabase リアルタイム同期
+  // Supabase リアルタイム同期
   useEffect(() => {
     if (!isOnline || !roomId || !user || !supabase) return;
     const fetchRoom = async () => {
@@ -190,6 +203,7 @@ export default function App() {
       }
     };
     fetchRoom();
+
     const channel = supabase.channel(`room_${roomId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => {
         const data = payload.new;
@@ -220,13 +234,13 @@ export default function App() {
   }, [isOnline, roomId, supabase]);
 
   const createRoom = async () => {
-    if (!supabase) { setErrorMsg('Supabaseが未設定です。URLとキーをVercelに設定してください。'); return; }
+    if (!supabase) { setErrorMsg('Supabaseが設定されていません。Vercelで環境変数を設定してください。'); return; }
     if (!user) return;
     const newRoomId = Math.floor(1000 + Math.random() * 9000).toString();
     try {
       const { error } = await supabase.from('rooms').insert([{
         id: newRoomId, host_uid: user.uid, players: [{ uid: user.uid, name: 'ホスト' }],
-        status: 'waiting', game: null, mode: mode, active_themes: activeThemes,
+        status: 'waiting', mode: mode, active_themes: activeThemes,
         player_count: playerCount
       }]);
       if (error) throw error;
@@ -243,7 +257,7 @@ export default function App() {
       if (error || !data) { setErrorMsg("部屋が見つかりません"); return; }
       if (data.status !== 'waiting') { setErrorMsg("進行中です"); return; }
       if (data.players.length >= (data.player_count || 4)) { setErrorMsg("満員です"); return; }
-      const newPlayers = [...data.players, { uid: user.uid, name: `ゲスト${data.players.length}` }];
+      const newPlayers = [...data.players, { uid: user.uid, name: `参加者${data.players.length + 1}` }];
       await supabase.from('rooms').update({ players: newPlayers }).eq('id', joinRoomIdInput);
       setRoomId(joinRoomIdInput);
       setIsOnline(true);
@@ -252,15 +266,18 @@ export default function App() {
   };
 
   const handleStartButton = () => {
-    if (isOnline) { createRoom(); } else {
+    if (isOnline) { 
+      createRoom(); 
+    } else {
       const deck = [...PREFECTURES].sort(() => Math.random() - 0.5);
       const players = Array.from({ length: 4 }).map((_, i) => ({
         id: i, name: i < playerCount ? (playerCount === 1 ? 'あなた' : `プレイヤー${i + 1}`) : `CPU ${i - playerCount + 1}`,
         isCpu: i >= playerCount, hand: deck.slice(i * 5, (i + 1) * 5).sort((a,b) => a.id - b.id), passed: false
       }));
       setGame({
+        mode: mode,
         players, turn: 0, viewIndex: 0, fieldCards: [], currentThemeId: null, lastPlayedIdx: 0, winner: null, phase: 'WAITING',
-        isPassing: playerCount > 1, nextViewIndex: 0, message: '対戦を開始します', targetValue: 0, targetPref: null,
+        message: '対戦を開始します', targetValue: 0, targetPref: null,
         pending: null, doubtResult: null, deck: deck.slice(20)
       });
       setStep('BOARD');
@@ -276,8 +293,9 @@ export default function App() {
       isCpu: i >= joinedCount, hand: deck.slice(i * 5, (i + 1) * 5).sort((a,b) => a.id - b.id), passed: false
     }));
     const initialGame = {
+      mode: roomData.mode,
       players, turn: 0, viewIndex: 0, fieldCards: [], currentThemeId: null, lastPlayedIdx: 0, winner: null, phase: 'WAITING',
-      isPassing: false, nextViewIndex: 0, message: '開始！', targetValue: 0, targetPref: null, pending: null, deck: deck.slice(20)
+      message: '開始！', targetValue: 0, targetPref: null, pending: null, deck: deck.slice(20)
     };
     await supabase.from('rooms').update({ status: 'playing', game: initialGame }).eq('id', roomId);
   };
@@ -286,7 +304,8 @@ export default function App() {
     updateGame(prev => {
       if (!prev || prev.winner) return prev;
       let next = (prev.turn + 1) % 4;
-      if (mode === 'daifugo') {
+      const currentMode = prev.mode || 'daifugo';
+      if (currentMode === 'daifugo') {
         let loop = 0;
         while (prev.players[next].passed && loop < 4) { next = (next + 1) % 4; loop++; }
         if (next === prev.lastPlayedIdx && prev.players.filter(p => p.passed).length >= 3) {
@@ -296,25 +315,26 @@ export default function App() {
       }
       return { ...prev, turn: next, phase: 'WAITING' };
     });
-  }, [mode, updateGame]);
+  }, [updateGame]);
 
   const handlePlayBasic = (idx, card, theme = null) => {
     updateGame(prev => {
       const activeT = theme || prev.currentThemeId;
       const newPlayers = prev.players.map((p, i) => i === idx ? { ...p, hand: p.hand.filter(c => c.id !== card.id) } : p);
       if (newPlayers[idx].hand.length === 0) return { ...prev, players: newPlayers, winner: newPlayers[idx], phase: 'OVER' };
-      return { ...prev, players: newPlayers.map(p => ({ ...p, passed: false })), fieldCards: [...prev.fieldCards, card], currentThemeId: activeT, lastPlayedIdx: idx, phase: 'RESOLVING', message: `${prev.players[idx].name}の番` };
+      return { ...prev, players: newPlayers.map(p => ({ ...p, passed: false })), fieldCards: [...prev.fieldCards, card], currentThemeId: activeT, lastPlayedIdx: idx, phase: 'RESOLVING', message: `${prev.players[idx].name}のカード！` };
     });
   };
 
-  const handlePassBasic = (idx) => updateGame(prev => ({ ...prev, players: prev.players.map((p, i) => i === idx ? { ...p, passed: true } : p), phase: 'RESOLVING', message: `パス` }));
+  const handlePassBasic = (idx) => updateGame(prev => ({ ...prev, players: prev.players.map((p, i) => i === idx ? { ...p, passed: true } : p), phase: 'RESOLVING', message: `パスしました` }));
 
   const onDoubtPlay = (card, declared, theme = null) => updateGame(prev => ({
     ...prev, 
     players: prev.players.map((p, i) => i === prev.turn ? { ...p, hand: p.hand.filter(c => c.id !== card.id) } : p), 
     pending: { card, declared, playerIndex: prev.turn }, 
     currentThemeId: theme || prev.currentThemeId,
-    phase: 'DOUBT_WINDOW'
+    phase: 'DOUBT_WINDOW',
+    message: `${prev.players[prev.turn].name} がカードを伏せました...`
   }));
 
   const onResolveDoubt = (doubterId) => {
@@ -334,7 +354,16 @@ export default function App() {
     updateGame(prev => {
       if (prev.phase !== 'DOUBT_WINDOW') return prev;
       if (prev.players[prev.turn].hand.length === 0) return { ...prev, winner: prev.players[prev.turn], phase: 'OVER' };
-      return { ...prev, turn: (prev.turn + 1) % 4, phase: 'WAITING', targetValue: prev.pending.declared[prev.currentThemeId], targetPref: prev.pending.declared, fieldCards: [...prev.fieldCards, prev.pending.card], pending: null };
+      return { 
+        ...prev, 
+        turn: (prev.turn + 1) % 4, 
+        phase: 'WAITING', 
+        targetValue: prev.pending.declared[prev.currentThemeId], 
+        targetPref: prev.pending.declared, 
+        fieldCards: [...prev.fieldCards, prev.pending.card], 
+        pending: null,
+        message: `誰もダウトしませんでした。`
+      };
     });
   }, [updateGame]);
 
@@ -342,32 +371,40 @@ export default function App() {
     if (!game) return;
     if (isOnline && roomData?.host_uid !== user?.uid) return;
     if (game.phase === 'RESOLVING') { const t = setTimeout(moveToNext, 1200); return () => clearTimeout(t); }
-    if (mode === 'doubt' && game.phase === 'DOUBT_WINDOW') {
-       const t = setTimeout(onAcceptDoubt, 4000); return () => clearTimeout(t);
+    if (game.mode === 'doubt' && game.phase === 'DOUBT_WINDOW') {
+       const t = setTimeout(onAcceptDoubt, 5000); return () => clearTimeout(t);
     }
-  }, [game?.phase, mode, isOnline, roomData, moveToNext, onAcceptDoubt]);
+  }, [game?.phase, game?.mode, isOnline, roomData, moveToNext, onAcceptDoubt]);
 
+  // CPUのアクション
   useEffect(() => {
-    if (!game || game.winner || game.isPassing || game.phase !== 'WAITING') return;
+    if (!game || game.winner || game.phase !== 'WAITING') return;
     if (isOnline && roomData?.host_uid !== user?.uid) return; 
     const p = game.players[game.turn];
     if (!p || !p.isCpu) return;
+    
     const t = setTimeout(() => {
       const cpuTheme = activeThemes[Math.floor(Math.random() * activeThemes.length)];
-      if (mode === 'daifugo') {
-        if (!game.currentThemeId) handlePlayBasic(game.turn, p.hand[0], cpuTheme);
-        else {
+      const currentMode = game.mode || 'daifugo';
+      
+      if (currentMode === 'daifugo') {
+        if (!game.currentThemeId) {
+          handlePlayBasic(game.turn, p.hand[0], cpuTheme);
+        } else {
           const top = game.fieldCards[game.fieldCards.length-1][game.currentThemeId];
           const v = p.hand.filter(c => c[game.currentThemeId] > top).sort((a,b)=>a[game.currentThemeId]-b[game.currentThemeId])[0];
           if (v) handlePlayBasic(game.turn, v); else handlePassBasic(game.turn);
         }
       } else {
-        if (!game.currentThemeId) onDoubtPlay(p.hand[0], p.hand[0], cpuTheme);
-        else onDoubtPlay(p.hand[0], p.hand[0]);
+        if (!game.currentThemeId) {
+          onDoubtPlay(p.hand[0], p.hand[0], cpuTheme);
+        } else {
+          onDoubtPlay(p.hand[0], p.hand[0]);
+        }
       }
     }, 1500);
     return () => clearTimeout(t);
-  }, [game?.turn, game?.phase, mode, activeThemes, isOnline, roomData, updateGame]);
+  }, [game?.turn, game?.phase, game?.mode, activeThemes, isOnline, roomData, updateGame]);
 
   const renderError = () => errorMsg && (
     <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-full z-[1000] flex items-center gap-2 font-black shadow-lg">
@@ -375,6 +412,10 @@ export default function App() {
       <button onClick={() => setErrorMsg('')}><XCircle size={16}/></button>
     </div>
   );
+
+  // ----------------------------------------------------
+  // UI 描画
+  // ----------------------------------------------------
 
   if (step === 'PLAYER_SELECT') return (
     <div className="min-h-screen bg-emerald-800 flex items-center justify-center p-6 text-white text-center">
@@ -392,10 +433,15 @@ export default function App() {
   );
 
   if (step === 'MENU') return (
-    <div className="min-h-screen bg-emerald-800 flex flex-col items-center justify-center p-6 text-center text-white font-sans">
-      <style dangerouslySetInnerHTML={{__html: styles}} />
-      <div className="z-10 w-full max-w-sm space-y-12 animate-fade-in text-white">
-        <h1 className="text-6xl font-black italic tracking-tighter drop-shadow-xl">チリキング</h1>
+    <div className="min-h-screen bg-emerald-800 flex flex-col items-center justify-center p-6 text-center text-white font-sans overflow-hidden relative">
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+      `}} />
+      <div className="z-10 w-full max-w-sm space-y-12 animate-fade-in">
+        <h1 className="text-6xl font-black italic tracking-tighter drop-shadow-xl text-white">チリキング</h1>
         <div className="space-y-4">
           <button onClick={() => { setIsOnline(false); setStep('PLAYER_SELECT'); }} className="w-full py-5 bg-white text-emerald-900 rounded-2xl font-black text-2xl shadow-xl active:scale-95 transition-all">1台で遊ぶ (オフライン)</button>
           <button onClick={() => { setIsOnline(true); setStep('ONLINE_MENU'); }} className="w-full py-5 bg-emerald-950 text-white rounded-2xl font-black text-2xl border border-white/20 shadow-xl active:scale-95 transition-all">みんなで遊ぶ (オンライン)</button>
@@ -408,13 +454,13 @@ export default function App() {
     <div className="min-h-screen bg-emerald-800 flex flex-col items-center justify-center p-6 text-white text-center">
       {renderError()}
       <div className="w-full max-w-sm space-y-8 animate-fade-in">
-        <h2 className="text-4xl font-black italic text-white">オンライン</h2>
+        <h2 className="text-4xl font-black italic">オンライン</h2>
         <div className="bg-white/10 p-6 rounded-[32px] backdrop-blur-md border border-white/10 shadow-2xl">
           <button onClick={() => { setIsOnline(true); setStep('PLAYER_SELECT'); }} className="w-full bg-white text-emerald-900 py-5 rounded-2xl font-black text-2xl mb-6 shadow-md active:scale-95 transition-all">部屋を作る</button>
-          <input type="text" value={joinRoomIdInput} onChange={e => setJoinRoomIdInput(e.target.value)} placeholder="ルームID" className="w-full bg-emerald-950/50 text-white text-center text-3xl font-black py-4 rounded-2xl mb-4 focus:ring-4 ring-emerald-400 outline-none transition-all placeholder:text-white/30"/>
+          <input type="text" value={joinRoomIdInput} onChange={e => setJoinRoomIdInput(e.target.value)} placeholder="ルームID" className="w-full bg-emerald-950/50 text-white text-center text-3xl font-black py-4 rounded-2xl mb-4 focus:ring-4 ring-emerald-400 outline-none transition-all placeholder:text-white/30 text-white"/>
           <button onClick={joinRoom} className="w-full bg-emerald-600 text-white py-5 rounded-2xl font-black text-xl shadow-md active:scale-95 transition-all">部屋に入る</button>
         </div>
-        <button onClick={() => setStep('MENU')} className="text-sm underline opacity-50 hover:opacity-100 transition-opacity">タイトルに戻る</button>
+        <button onClick={() => setStep('MENU')} className="text-sm underline opacity-50 hover:opacity-100">戻る</button>
       </div>
     </div>
   );
@@ -457,7 +503,7 @@ export default function App() {
           <button key={t.id} onClick={() => { if (activeThemes[0] === t.id) return; setActiveThemes([t.id, activeThemes[0]]); }} className={`p-5 rounded-2xl border-2 flex flex-col items-center transition-all ${activeThemes.includes(t.id) ? 'bg-white text-emerald-900 border-white scale-105 shadow-xl' : 'bg-white/10 border-transparent opacity-50 hover:opacity-80'}`}><t.icon size={32} className="mb-2"/><span className="font-black text-sm">{t.name}</span></button>
         ))}
       </div>
-      <button onClick={() => setStep('RULE')} className="w-full max-w-xs py-5 bg-emerald-400 text-emerald-900 rounded-full font-black text-xl shadow-lg hover:bg-emerald-300 transition-colors active:scale-95">ルール設定へ</button>
+      <button onClick={() => setStep('RULE')} className="w-full max-w-xs py-5 bg-emerald-400 text-emerald-900 rounded-full font-black text-xl shadow-lg hover:bg-emerald-300 transition-colors active:scale-95">決定</button>
     </div>
   );
 
@@ -469,7 +515,7 @@ export default function App() {
           <button onClick={()=>setMode('daifugo')} className={`flex-1 py-4 rounded-xl font-black border-2 transition-all ${mode==='daifugo'?'bg-emerald-600 text-white border-emerald-600 shadow-md':'border-slate-200 text-slate-400 hover:border-emerald-300'}`}>基本</button>
           <button onClick={()=>setMode('doubt')} className={`flex-1 py-4 rounded-xl font-black border-2 transition-all ${mode==='doubt'?'bg-red-600 text-white border-red-600 shadow-md':'border-slate-200 text-slate-400 hover:border-red-300'}`}>ダウト</button>
         </div>
-        <button onClick={handleStartButton} className="w-full bg-emerald-600 text-white py-6 rounded-3xl font-black text-2xl shadow-xl active:scale-95 transition-all hover:bg-emerald-500">決定</button>
+        <button onClick={handleStartButton} className="w-full bg-emerald-600 text-white py-6 rounded-3xl font-black text-2xl shadow-xl active:scale-95 transition-all hover:bg-emerald-500">対戦開始！！</button>
       </div>
     </div>
   );
@@ -479,12 +525,19 @@ export default function App() {
     const cp = game.players[actualViewIndex];
     const currentOrPendingThemeId = game.currentThemeId || pendingTheme;
     const td = THEME_DEFS[currentOrPendingThemeId];
+    const currentMode = game.mode || mode;
 
     return (
-      <div className="min-h-screen bg-emerald-800 text-white flex flex-col overflow-hidden relative text-white">
-        <style dangerouslySetInnerHTML={{__html: styles}} />
+      <div className="min-h-screen bg-emerald-800 text-white flex flex-col overflow-hidden relative">
         <div className="bg-emerald-950/90 p-3 flex justify-between items-center shrink-0 border-b border-white/10 shadow-sm z-50 backdrop-blur-md">
-          <div className="font-black text-emerald-500 text-sm italic tracking-widest flex items-center gap-1"><MapIcon size={14}/> CHIRIKING</div>
+          <div className="flex flex-col text-white">
+            <div className="font-black text-emerald-500 text-[10px] italic tracking-widest flex items-center gap-1 uppercase">
+              <MapIcon size={12}/> CHIRIKING
+            </div>
+            <div className={`text-[8px] font-bold uppercase px-1.5 rounded-sm inline-block ${currentMode === 'doubt' ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'}`}>
+              RULE: {currentMode}
+            </div>
+          </div>
           <div className="text-[10px] font-black bg-emerald-400/20 text-emerald-100 px-3 py-1 rounded-full uppercase italic animate-pulse border border-emerald-400/30">{game.message}</div>
           <button onClick={() => setStep('MENU')} className="text-[9px] bg-red-600/20 text-red-400 font-black px-2 py-1 rounded hover:bg-red-600/40 transition-colors">EXIT</button>
         </div>
@@ -494,13 +547,13 @@ export default function App() {
             {game.players.map((p, i) => {
               if (i === actualViewIndex) return null;
               return (
-                <div key={i} className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border-2 transition-all duration-300 ${game.turn === i ? 'bg-emerald-500 text-emerald-950 border-emerald-300 scale-110 shadow-[0_0_15px_rgba(52,211,153,0.5)] z-10' : 'bg-black/40 border-white/10 text-white/70 opacity-80'}`}>
+                <div key={i} className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border-2 transition-all duration-300 ${game.turn === i ? 'bg-emerald-500 text-emerald-950 border-emerald-300 scale-110 shadow-lg z-10' : 'bg-black/40 border-white/10 text-white/70 opacity-80'}`}>
                   <span className="text-[10px] font-black truncate max-w-[60px] text-white">{p.name}</span>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 text-white">
                     <div className="flex -space-x-1.5">{Array.from({ length: Math.min(p.hand.length, 5) }).map((_, idx) => (
                       <div key={idx} className={`w-3 h-4 bg-blue-900 border border-white/30 rounded-sm shadow-sm ${game.turn === i ? 'border-emerald-900' : ''}`} />
                     ))}</div>
-                    <span className="text-xs font-black ml-1 text-white">{p.hand.length}枚</span>
+                    <span className="text-xs font-black ml-1">{p.hand.length}枚</span>
                   </div>
                   {p.passed && <span className="absolute -bottom-2 bg-red-500 text-white text-[8px] px-1.5 rounded-full border border-white/20 font-black">PASS</span>}
                 </div>
@@ -512,7 +565,7 @@ export default function App() {
             <div className="text-center mt-12 mb-6 z-10 animate-fade-in w-full max-w-sm">
               {game.turn === actualViewIndex ? (
                 <div className="bg-emerald-900/90 p-5 rounded-[32px] border-2 border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.4)] backdrop-blur-md">
-                  <p className="text-xs font-black text-emerald-300 mb-4 tracking-widest">勝負する属性を選んでください</p>
+                  <p className="text-xs font-black text-emerald-300 mb-4 tracking-widest uppercase text-white text-center">属性を選んで勝負開始</p>
                   <div className="flex justify-center gap-4">{activeThemes.map(tId => {
                     const TDef = THEME_DEFS[tId];
                     if (!TDef) return null;
@@ -522,62 +575,94 @@ export default function App() {
                   })}</div>
                 </div>
               ) : (
-                <div className="bg-black/40 px-6 py-4 rounded-3xl border border-white/10 backdrop-blur-md"><p className="text-sm font-black text-emerald-400/80 animate-pulse tracking-widest">{game.players[game.turn]?.name} が属性を選んでいます...</p></div>
+                <div className="bg-black/40 px-6 py-4 rounded-3xl border border-white/10 backdrop-blur-md text-white"><p className="text-sm font-black text-emerald-400/80 animate-pulse tracking-widest">{game.players[game.turn]?.name} が属性を選んでいます...</p></div>
               )}
             </div>
           ) : (
             td && (
               <div className="bg-emerald-900/80 p-6 rounded-[40px] border-2 border-emerald-400 text-center mt-10 mb-6 backdrop-blur-md shadow-[0_0_30px_rgba(52,211,153,0.3)] animate-fade-in relative z-10 w-72">
-                 <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-emerald-400 text-emerald-950 px-5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-md flex items-center gap-1"><td.icon size={14}/> 現在のテーマ</div>
+                 <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-emerald-400 text-emerald-950 px-5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-md flex items-center gap-1 text-white"><td.icon size={14}/> CURRENT THEME</div>
                  <div className="text-emerald-100 text-sm font-black mb-3 flex justify-center items-center gap-1">{td.name} 勝負</div>
                  <div className="text-white text-2xl font-black italic flex items-baseline justify-center gap-2">
-                   {game.fieldCards.length > 0 ? game.fieldCards[game.fieldCards.length-1].name : (game.targetPref?.name || "Waiting...")}
+                   {game.fieldCards.length > 0 ? game.fieldCards[game.fieldCards.length-1].name : "Waiting..."}
                    <span className="text-yellow-400 font-mono text-5xl drop-shadow-md leading-none ml-2">{game.fieldCards.length > 0 ? game.fieldCards[game.fieldCards.length-1][game.currentThemeId] : (game.targetValue || "-")}</span>
                    <span className="text-xs text-yellow-400/70 font-sans tracking-normal">{td.unit}</span>
                  </div>
               </div>
             )
           )}
+          
           <div className="relative w-40 h-52 flex items-center justify-center">
             {game.fieldCards.map((c, i) => (
-              <div key={i} className="absolute transform transition-transform duration-500" style={{ rotate: `${(i*7)%30-15}deg`, zIndex: i }}><CardView card={c} activeThemes={activeThemes} highlight={game.currentThemeId} /></div>
+              <div key={i} className={`absolute transform transition-transform duration-500 ${game.phase === 'DOUBT_WINDOW' && i === game.fieldCards.length - 1 ? 'scale-110 -translate-y-4' : ''}`} style={{ rotate: `${(i*7)%30-15}deg`, zIndex: i }}>
+                <CardView card={c} activeThemes={activeThemes} highlight={game.currentThemeId} />
+              </div>
             ))}
-            {game.fieldCards.length === 0 && <div className="text-white/10 font-black italic text-4xl border-4 border-dashed border-white/10 rounded-3xl w-full h-full flex items-center justify-center drop-shadow-sm text-white">FIELD</div>}
+            
+            {game.phase === 'DOUBT_WINDOW' && game.pending && (
+              <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center pointer-events-none">
+                 <div className="bg-red-600 text-white font-black px-6 py-2 rounded-full animate-bounce shadow-2xl text-xl italic uppercase tracking-tighter flex items-center gap-2 border-2 border-white">
+                   <DoubtIcon size={24}/> DOUBT?
+                 </div>
+              </div>
+            )}
+            {game.fieldCards.length === 0 && !game.pending && <div className="text-white/10 font-black italic text-4xl border-4 border-dashed border-white/10 rounded-3xl w-full h-full flex items-center justify-center drop-shadow-sm text-white text-center uppercase">Field</div>}
           </div>
         </div>
 
         <div className={`h-64 transition-colors duration-300 border-t-4 p-4 pb-10 shrink-0 shadow-[0_-15px_40px_rgba(0,0,0,0.5)] z-50 backdrop-blur-xl relative ${game.turn === actualViewIndex ? 'bg-emerald-800/95 border-emerald-400 shadow-[0_-15px_50px_rgba(52,211,153,0.3)]' : 'bg-emerald-950/95 border-emerald-950'}`}>
-           <div className="flex justify-between items-center mb-4 max-w-lg mx-auto relative">
-             <div className={`text-[10px] font-black italic uppercase tracking-[0.2em] flex items-center gap-1 px-3 py-1 rounded-full ${game.turn === actualViewIndex ? 'bg-emerald-400 text-emerald-950' : 'text-emerald-500/50'}`}><ClipboardList size={12}/> {game.turn === actualViewIndex ? 'YOUR TURN!' : 'Your Hand'}</div>
-             {game.turn === actualViewIndex && mode === 'daifugo' && game.currentThemeId && (
-               <button onClick={()=>handlePassBasic(actualViewIndex)} className="text-[10px] font-black bg-red-500 text-white px-6 py-2 rounded-full border-b-4 border-red-700 active:scale-95 active:border-b-0 active:translate-y-1 transition-all shadow-md">PASS</button>
+           <div className="flex justify-between items-center mb-4 max-w-lg mx-auto relative text-white">
+             <div className={`text-[10px] font-black italic uppercase tracking-[0.2em] flex items-center gap-1 px-3 py-1 rounded-full ${game.turn === actualViewIndex ? 'bg-emerald-400 text-emerald-950' : 'text-emerald-500/50'}`}>
+               <ClipboardList size={12}/> {game.turn === actualViewIndex ? 'あなたのターン！' : 'あなたの手札'}
+             </div>
+             
+             {game.turn === actualViewIndex && currentMode === 'daifugo' && game.currentThemeId && game.phase === 'WAITING' && (
+               <button onClick={()=>handlePassBasic(actualViewIndex)} className="text-[10px] font-black bg-red-500 text-white px-6 py-2 rounded-full border-b-4 border-red-700 active:scale-95 shadow-md">パスする</button>
              )}
-             {game.players[actualViewIndex]?.passed && <span className="text-xs font-black text-red-400 bg-red-400/10 px-2 py-1 rounded">PASSED</span>}
+             
+             {game.phase === 'DOUBT_WINDOW' && game.pending.playerIndex !== actualViewIndex && (
+               <button onClick={()=>onResolveDoubt(actualViewIndex)} className="text-sm font-black bg-red-600 text-white px-8 py-2 rounded-full border-b-4 border-red-800 active:scale-95 shadow-xl animate-pulse">ダウト！！</button>
+             )}
+
+             {game.players[actualViewIndex]?.passed && <span className="text-xs font-black text-red-400 bg-red-400/10 px-2 py-1 rounded uppercase tracking-widest italic text-white">パス中</span>}
            </div>
-           <div className="flex justify-center items-end space-x-2 h-40 overflow-x-auto pb-4 scrollbar-hide px-2 text-white">
+           
+           <div className="flex justify-center items-end space-x-2 h-40 overflow-x-auto pb-4 scrollbar-hide px-2">
              {cp?.hand.map(c => (
-               <div key={c.id} className={`${game.turn === actualViewIndex ? 'animate-[bounce_2s_infinite]' : ''}`} style={{animationDelay: `${Math.random()}s`}}><CardView card={c} activeThemes={activeThemes} selectable={game.turn === actualViewIndex && !cp.passed} onClick={() => mode === 'daifugo' ? handlePlayBasic(actualViewIndex, c, game.currentThemeId ? null : pendingTheme) : onDoubtPlay(c, c, game.currentThemeId ? null : pendingTheme)} highlight={game.currentThemeId || pendingTheme} /></div>
+               <div key={c.id} className={`${game.turn === actualViewIndex && game.phase === 'WAITING' ? 'animate-[bounce_2s_infinite]' : ''}`} style={{animationDelay: `${Math.random()}s`}}>
+                 <CardView 
+                   card={c} 
+                   activeThemes={activeThemes} 
+                   selectable={game.turn === actualViewIndex && game.phase === 'WAITING'} 
+                   onClick={() => currentMode === 'daifugo' ? handlePlayBasic(actualViewIndex, c, game.currentThemeId ? null : pendingTheme) : onDoubtPlay(c, c, game.currentThemeId ? null : pendingTheme)} 
+                   highlight={game.currentThemeId || pendingTheme} 
+                 />
+               </div>
              ))}
-             {cp?.hand.length === 0 && <div className="text-white/30 font-black italic text-2xl h-full flex items-center">NO CARDS</div>}
            </div>
         </div>
 
         {game.phase === 'RESOLUTION' && (
           <div className="fixed inset-0 bg-black/95 z-[200] flex items-center justify-center p-8 text-center animate-fade-in backdrop-blur-lg">
             <div className={`p-12 rounded-[56px] border-4 shadow-2xl transform transition-transform ${game.doubtResult.isTruth ? 'bg-emerald-600 border-emerald-400' : 'bg-red-700 border-red-400'}`}>
-              <h2 className="text-7xl font-black mb-6 italic tracking-tighter text-white drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)]">{game.doubtResult.isTruth ? 'SAFE!' : 'OUT!'}</h2>
-              <div className="flex justify-center mb-8 scale-110"><CardView card={game.doubtResult.actual} activeThemes={activeThemes} highlight={game.currentThemeId} /></div>
-              <p className="text-white font-black text-xl mb-6">{game.players[game.doubtResult.loserId].name} がペナルティ！</p>
-              <button onClick={() => updateGame(prev => ({...prev, phase: 'WAITING', doubtResult: null, fieldCards: [], currentThemeId: null, turn: prev.doubtResult.loserId }))} className="bg-white text-slate-900 px-12 py-4 rounded-full font-black shadow-xl active:scale-95 transition-all text-xl hover:bg-slate-100">次へ進む</button>
+              <h2 className="text-7xl font-black mb-6 italic tracking-tighter text-white drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] uppercase text-white">{game.doubtResult.isTruth ? '成功！' : '失敗！'}</h2>
+              <div className="flex flex-col items-center gap-4 mb-8">
+                 <div className="flex justify-center scale-110">
+                   <CardView card={game.doubtResult.actual} activeThemes={activeThemes} highlight={game.currentThemeId} />
+                 </div>
+                 <div className="text-white bg-black/20 px-4 py-1 rounded-full font-bold text-xs">数値: {game.doubtResult.actual[game.currentThemeId]} {td.unit}</div>
+              </div>
+              <p className="text-white font-black text-xl mb-6 text-white">{game.players[game.doubtResult.loserId].name} がペナルティ！</p>
+              <button onClick={() => updateGame(prev => ({...prev, phase: 'WAITING', doubtResult: null, fieldCards: [], currentThemeId: null, turn: prev.doubtResult.loserId, message: '次のラウンド開始！' }))} className="bg-white text-slate-900 px-12 py-4 rounded-full font-black shadow-xl active:scale-95 transition-all text-xl hover:bg-slate-100">次へ</button>
             </div>
           </div>
         )}
 
         {game.phase === 'OVER' && (
-          <div className="fixed inset-0 bg-emerald-950 z-[300] flex flex-col items-center justify-center animate-fade-in text-center p-8 backdrop-blur-xl">
-            <div className="bg-emerald-900/80 p-16 rounded-[64px] border-2 border-emerald-400/30 shadow-[0_0_60px_rgba(0,0,0,0.5)] text-white">
+          <div className="fixed inset-0 bg-emerald-950 z-[300] flex flex-col items-center justify-center animate-fade-in text-center p-8 backdrop-blur-xl text-white">
+            <div className="bg-emerald-900/80 p-16 rounded-[64px] border-2 border-emerald-400/30 shadow-[0_0_60px_rgba(0,0,0,0.5)]">
               <Award size={120} className="text-yellow-400 mb-6 mx-auto animate-bounce drop-shadow-[0_0_20px_rgba(250,204,21,0.5)]" />
-              <h2 className="text-7xl font-black italic text-white mb-2 tracking-tighter uppercase drop-shadow-md">WINNER!</h2>
+              <h2 className="text-7xl font-black italic text-white mb-2 tracking-tighter uppercase drop-shadow-md">優勝！</h2>
               <h3 className="text-5xl font-black italic text-emerald-400 mb-12 drop-shadow-md">{game.winner?.name}</h3>
               <button onClick={() => setStep('MENU')} className="bg-white text-emerald-950 px-16 py-5 rounded-full font-black text-2xl shadow-xl hover:scale-105 active:scale-95 transition-all">タイトルへ</button>
             </div>
@@ -588,10 +673,3 @@ export default function App() {
   }
   return null;
 }
-
-const styles = `
-@keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-.animate-fade-in { animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-.scrollbar-hide::-webkit-scrollbar { display: none; }
-.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-`;
