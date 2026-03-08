@@ -7,6 +7,29 @@ import {
   Network, Plus, LogIn, ClipboardList, ShieldAlert as DoubtIcon
 } from 'lucide-react';
 
+/**
+ * Tailwind CSS & Supabase Dynamic Loader
+ * プレビュー環境と本番環境の両方でデザインと機能を確実に動作させます。
+ */
+const useExternalScripts = () => {
+  useEffect(() => {
+    // Tailwind CSSの注入
+    if (!document.getElementById('tailwind-cdn')) {
+      const script = document.createElement('script');
+      script.id = 'tailwind-cdn';
+      script.src = 'https://cdn.tailwindcss.com';
+      document.head.appendChild(script);
+    }
+    // Supabase SDKの注入
+    if (!document.getElementById('supabase-cdn')) {
+      const script = document.createElement('script');
+      script.id = 'supabase-cdn';
+      script.src = 'https://unpkg.com/@supabase/supabase-js@2';
+      document.head.appendChild(script);
+    }
+  }, []);
+};
+
 // ==========================================
 // 1. 都道府県データ
 // ==========================================
@@ -119,6 +142,7 @@ export default function App() {
   const [game, setGame] = useState(null);
   const [pendingTheme, setPendingTheme] = useState('population');
   
+  const [nickname, setNickname] = useState('プレイヤー'); // ニックネーム設定用のステート
   const [user, setUser] = useState(null);
   const [isOnline, setIsOnline] = useState(false);
   const [roomId, setRoomId] = useState('');
@@ -211,9 +235,9 @@ export default function App() {
     const newRoomId = Math.floor(1000 + Math.random() * 9000).toString();
     try {
       await supabase.from('rooms').insert([{
-        id: newRoomId, host_uid: user.uid, players: [{ uid: user.uid, name: 'ホスト' }],
+        id: newRoomId, host_uid: user.uid, players: [{ uid: user.uid, name: nickname || 'ホスト' }],
         status: 'waiting', mode: mode, active_themes: ['population', 'area'],
-        game: { target_player_count: playerCount } // ターゲット人数をgame内に保存（スキーマ不整合対策）
+        game: { target_player_count: playerCount } 
       }]);
       setRoomId(newRoomId);
       setIsOnline(true);
@@ -234,7 +258,7 @@ export default function App() {
       const targetCount = data.game?.target_player_count || 4;
       if (data.players.length >= targetCount) { setErrorMsg("満員です"); return; }
       
-      const newPlayers = [...data.players, { uid: user.uid, name: `参加者${data.players.length + 1}` }];
+      const newPlayers = [...data.players, { uid: user.uid, name: nickname || `参加者${data.players.length + 1}` }];
       await supabase.from('rooms').update({ players: newPlayers }).eq('id', targetId);
       setRoomId(targetId);
       setIsOnline(true);
@@ -248,7 +272,7 @@ export default function App() {
     } else {
       const deck = [...PREFECTURES].sort(() => Math.random() - 0.5);
       const players = Array.from({ length: 4 }).map((_, i) => ({
-        id: i, name: i < playerCount ? (playerCount === 1 ? 'あなた' : `プレイヤー${i + 1}`) : `CPU ${i - playerCount + 1}`,
+        id: i, name: i < playerCount ? (playerCount === 1 ? (nickname || 'あなた') : `${nickname}${i + 1}`) : `CPU ${i - playerCount + 1}`,
         isCpu: i >= playerCount, hand: deck.slice(i * 5, (i + 1) * 5).sort((a,b) => a.id - b.id), passed: false
       }));
       setGame({
@@ -344,7 +368,7 @@ export default function App() {
   // デザイン反映用スタイル
   const pageBaseStyle = {
     minHeight: '100 screen',
-    backgroundColor: '#065f46', // emerald-800
+    backgroundColor: '#065f46',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -362,6 +386,22 @@ export default function App() {
       <style dangerouslySetInnerHTML={{__html: `@keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }.animate-fade-in { animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }.scrollbar-hide::-webkit-scrollbar { display: none; }`}} />
       <div className="z-10 w-full max-w-sm space-y-12 animate-fade-in">
         <h1 className="text-6xl font-black italic tracking-tighter drop-shadow-xl">CHIRIKING</h1>
+        
+        {/* ニックネーム入力欄 */}
+        <div className="bg-white/10 p-5 rounded-3xl backdrop-blur-md border border-white/20 shadow-lg">
+          <label className="text-[10px] font-black uppercase tracking-widest text-emerald-300 block mb-2">Nickname</label>
+          <div className="relative">
+            <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-400" />
+            <input 
+              type="text" 
+              value={nickname} 
+              onChange={e => setNickname(e.target.value)} 
+              placeholder="なまえを入力" 
+              className="w-full bg-emerald-950/50 text-white pl-12 pr-4 py-4 rounded-2xl font-black focus:ring-4 ring-emerald-400 outline-none placeholder:text-white/20 transition-all"
+            />
+          </div>
+        </div>
+
         <div className="space-y-4">
           <button onClick={() => { setIsOnline(false); setStep('PLAYER_SELECT'); }} className="w-full py-5 bg-white text-emerald-900 rounded-2xl font-black text-2xl shadow-xl active:scale-95 transition-all">1台で遊ぶ</button>
           <button onClick={() => { setIsOnline(true); setStep('ONLINE_MENU'); }} className="w-full py-5 bg-emerald-950 text-white rounded-2xl font-black text-2xl border border-white/20 shadow-xl active:scale-95 transition-all">オンライン対戦</button>
@@ -376,7 +416,7 @@ export default function App() {
         <h2 className="text-3xl font-black text-emerald-700 mb-8 italic">何人で遊ぶ？</h2>
         <div className="flex flex-col gap-4 mb-8">
           {[1, 2, 3, 4].map(num => (
-            <button key={num} onClick={() => { setPlayerCount(num); setStep('RULE'); }} className={`py-4 rounded-2xl font-black text-xl border-4 transition-all duration-200 flex items-center justify-center gap-3 ${playerCount === num ? 'bg-emerald-600 text-white border-emerald-600 shadow-lg' : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-emerald-300'}`}><Users size={24} /> {num}人</button>
+            <button key={num} onClick={() => { setPlayerCount(num); setStep('RULE'); }} className={`py-4 rounded-2xl font-black text-xl border-4 transition-all duration-200 flex items-center justify-center gap-3 ${playerCount === num ? 'bg-emerald-600 text-white border-emerald-600 shadow-lg scale-105' : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-emerald-300'}`}><Users size={24} /> {num}人</button>
           ))}
         </div>
         <button onClick={() => setStep('MENU')} className="text-sm font-bold text-slate-400 underline">戻る</button>
@@ -478,7 +518,7 @@ export default function App() {
               if (i === (isOnline ? myPlayerIndex : -1)) return null;
               return (
                 <div key={i} className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl border-2 transition-all duration-300 ${game.turn === i ? 'bg-emerald-500 text-emerald-950 border-emerald-300 scale-110 shadow-lg z-10' : 'bg-black/40 border-white/10 text-white/70 opacity-80'}`}>
-                  <span className="text-[10px] font-black truncate max-w-[60px] text-white">{p.name}</span>
+                  <span className="text-[10px] font-black truncate max-w-[60px]">{p.name}</span>
                   <div className="flex items-center gap-1">
                     <div className="flex -space-x-1.5">{Array.from({ length: Math.min(p.hand.length, 5) }).map((_, idx) => (
                       <div key={idx} className={`w-3 h-4 bg-emerald-900 border border-white/30 rounded-sm shadow-sm`} />
@@ -497,18 +537,18 @@ export default function App() {
                 <div className="bg-emerald-900/90 p-5 rounded-[32px] border-2 border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.4)] backdrop-blur-md">
                   <p className="text-xs font-black text-emerald-300 mb-4 tracking-widest uppercase text-white">勝負属性を選択してください</p>
                   <div className="flex justify-center gap-4 text-white">{Object.values(THEME_DEFS).map(TDef => (
-                    <button key={TDef.id} onClick={() => setPendingTheme(TDef.id)} className={`px-5 py-3 rounded-2xl font-black flex flex-col items-center gap-1 border-2 transition-all duration-200 ${pendingTheme === TDef.id ? 'bg-emerald-500 text-emerald-950 border-emerald-300 scale-110 shadow-lg' : 'bg-black/40 border-white/10 text-white/50 hover:bg-black/20'}`}><TDef.icon size={20}/> <span className="text-xs text-white">{TDef.name}</span></button>
+                    <button key={TDef.id} onClick={() => setPendingTheme(TDef.id)} className={`px-5 py-3 rounded-2xl font-black flex flex-col items-center gap-1 border-2 transition-all duration-200 ${pendingTheme === TDef.id ? 'bg-emerald-50 text-emerald-950 border-emerald-300 scale-110 shadow-lg' : 'bg-black/40 border-white/10 text-white/50 hover:bg-black/20'}`}><TDef.icon size={20}/> <span className="text-xs">{TDef.name}</span></button>
                   ))}</div>
                 </div>
               ) : (
-                <div className="bg-black/40 px-6 py-4 rounded-3xl border border-white/10 backdrop-blur-md"><p className="text-sm font-black text-emerald-400/80 animate-pulse tracking-widest text-white">{game.players[game.turn]?.name} が属性を選んでいます...</p></div>
+                <div className="bg-black/40 px-6 py-4 rounded-3xl border border-white/10 backdrop-blur-md text-white"><p className="text-sm font-black text-emerald-400/80 animate-pulse tracking-widest text-white">{game.players[game.turn]?.name} が属性を選んでいます...</p></div>
               )}
             </div>
           ) : (
             td && (
-              <div className="bg-emerald-900/80 p-6 rounded-[40px] border-2 border-emerald-400 text-center mt-10 mb-6 backdrop-blur-md shadow-[0_0_30px_rgba(52,211,153,0.3)] animate-fade-in relative z-10 w-72">
+              <div className="bg-emerald-900/80 p-6 rounded-[40px] border-2 border-emerald-400 text-center mt-10 mb-6 backdrop-blur-md shadow-[0_0_30px_rgba(52,211,153,0.3)] animate-fade-in relative z-10 w-72 text-white">
                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-emerald-400 text-emerald-950 px-5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-md flex items-center gap-1 text-emerald-950"><td.icon size={14}/> CURRENT THEME</div>
-                 <div className="text-emerald-100 text-sm font-black mb-3 flex justify-center items-center gap-1">{td.name} 勝負</div>
+                 <div className="text-emerald-100 text-sm font-black mb-3 flex justify-center items-center gap-1 text-emerald-100">{td.name} 勝負</div>
                  <div className="text-white text-2xl font-black italic flex items-baseline justify-center gap-2 text-white">
                    {game.fieldCards.length > 0 ? (currentMode === 'doubt' ? "???" : game.fieldCards[game.fieldCards.length-1].name) : "待機中"}
                    <span className="text-yellow-400 font-mono text-5xl drop-shadow-md leading-none ml-2 text-yellow-400">
@@ -527,12 +567,11 @@ export default function App() {
             ))}
             {game.phase === 'DOUBT_WINDOW' && (
               <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center pointer-events-none">
-                 <div className="bg-red-600 text-white font-black px-6 py-2 rounded-full animate-bounce shadow-2xl text-xl italic uppercase tracking-tighter flex items-center gap-2 border-2 border-white">
+                 <div className="bg-red-600 text-white font-black px-6 py-2 rounded-full animate-bounce shadow-2xl text-xl italic uppercase tracking-tighter flex items-center gap-2 border-2 border-white text-white">
                    <DoubtIcon size={24}/> DOUBT?
                  </div>
               </div>
             )}
-            {game.fieldCards.length === 0 && !game.pending && <div className="text-white/10 font-black italic text-4xl border-4 border-dashed border-white/10 rounded-3xl w-full h-full flex items-center justify-center drop-shadow-sm uppercase">Field</div>}
           </div>
         </div>
 
@@ -567,7 +606,7 @@ export default function App() {
         {game.phase === 'RESOLUTION' && (
           <div className="fixed inset-0 bg-black/95 z-[200] flex items-center justify-center p-8 text-center animate-fade-in backdrop-blur-lg text-white">
             <div className={`p-12 rounded-[56px] border-4 shadow-2xl transform transition-transform ${game.doubtResult.isTruth ? 'bg-emerald-600 border-emerald-400' : 'bg-red-700 border-red-400'}`}>
-              <h2 className="text-7xl font-black mb-6 italic tracking-tighter text-white uppercase">{game.doubtResult.isTruth ? '成功！' : '失敗！'}</h2>
+              <h2 className="text-7xl font-black mb-6 italic tracking-tighter text-white uppercase text-white">{game.doubtResult.isTruth ? '成功！' : '失敗！'}</h2>
               <div className="flex flex-col items-center gap-4 mb-8 text-white">
                  <div className="flex justify-center scale-110 text-white">
                    <CardView card={game.doubtResult.actual} activeThemes={['population', 'area']} highlight={game.currentThemeId} />
@@ -584,7 +623,7 @@ export default function App() {
             <div className="bg-emerald-900/80 p-16 rounded-[64px] border-2 border-emerald-400/30 shadow-[0_0_60px_rgba(0,0,0,0.5)]">
               <Award size={120} className="text-yellow-400 mb-6 mx-auto animate-bounce drop-shadow-[0_0_20px_rgba(250,204,21,0.5)]" />
               <h2 className="text-7xl font-black italic text-white mb-2 tracking-tighter uppercase drop-shadow-md">優勝！</h2>
-              <h3 className="text-5xl font-black italic text-emerald-400 mb-12 drop-shadow-md">{game.winner?.name}</h3>
+              <h3 className="text-5xl font-black italic text-emerald-400 mb-12 drop-shadow-md text-white">{game.winner?.name}</h3>
               <button onClick={() => setStep('MENU')} className="bg-white text-emerald-950 px-16 py-5 rounded-full font-black text-2xl shadow-xl hover:scale-105 active:scale-95 transition-all text-emerald-950">タイトルへ</button>
             </div>
           </div>
