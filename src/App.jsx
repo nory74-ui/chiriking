@@ -158,13 +158,13 @@ const CardView = ({ card, activeThemes, faceDown, selectable, onClick, highlight
       onClick={() => selectable && onClick && onClick(card)} 
       className={`${baseClasses} ${sz.card} bg-white text-slate-800 ${selectable ? 'cursor-pointer hover:-translate-y-3 border-emerald-500 ring-4 ring-emerald-200 shadow-emerald-500/50' : 'opacity-60 border-slate-300 grayscale-[0.5]'}`}
     >
-      <div className={`${sz.id} text-slate-400 w-full text-left font-bold italic px-1`}>No.{card.id}</div>
-      <div className={`${sz.name} font-black text-center tracking-tighter leading-tight drop-shadow-sm flex-1 flex items-center justify-center break-words w-full`}>{card.name}</div>
+      <div className={`${sz.id} text-slate-400 w-full text-left font-bold italic px-1`}>No.{card?.id}</div>
+      <div className={`${sz.name} font-black text-center tracking-tighter leading-tight drop-shadow-sm flex-1 flex items-center justify-center break-words w-full`}>{card?.name}</div>
       <div className="flex flex-col w-full space-y-1 mb-1">
         {themes.map(t => (
           <div key={t.id} className={`flex justify-between items-center ${sz.attr} rounded-sm ${highlight === t.id ? 'bg-emerald-600 text-white font-black shadow-inner scale-[1.05]' : 'text-slate-600 bg-slate-50 font-bold border border-slate-200'}`}>
             <span className="flex items-center gap-0.5 whitespace-nowrap"><t.icon size={sz.icon} className={highlight === t.id ? "text-white" : t.color}/></span>
-            <span className="whitespace-nowrap truncate pl-1 flex-1 text-right">{card[t.id]}<span className={`${sz.unit} opacity-80 ml-0.5`}>{t.unit}</span></span>
+            <span className="whitespace-nowrap truncate pl-1 flex-1 text-right">{card?.[t.id]}<span className={`${sz.unit} opacity-80 ml-0.5`}>{t.unit}</span></span>
           </div>
         ))}
       </div>
@@ -242,7 +242,7 @@ export default function App() {
     setUser({ uid });
   }, []);
 
-  // ★ 修正点: リアルタイム同期の確実な受信
+  // リアルタイム同期
   useEffect(() => {
     if (!isOnline || !roomId || !user || !supabase) return;
 
@@ -259,29 +259,18 @@ export default function App() {
           if (pIdx !== -1) setMyPlayerIndex(pIdx);
         }
         
-        // postgres_changes へのサブスクライブ
-        subscription = supabase
-          .channel(`room_${roomId}`)
-          .on(
-            'postgres_changes',
-            {
-              event: 'UPDATE', // 更新イベントのみを受け取る
-              schema: 'public',
-              table: 'rooms',
-              filter: `id=eq.${roomId}`
-            },
-            (payload) => {
-              const data = payload.new;
-              if (data) {
-                setRoomData(data);
-                if (data.game) setGame(data.game);
-                if (data.mode) setMode(data.mode);
-                if (data.active_themes) setActiveThemes(data.active_themes);
-                const pIdx = (data.players || []).findIndex(p => p.uid === user.uid);
-                if (pIdx !== -1) setMyPlayerIndex(pIdx);
-              }
-            }
-          )
+        subscription = supabase.channel(`public:rooms:id=eq.${roomId}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => {
+             const data = payload.new;
+             if (data) {
+               setRoomData(data);
+               if (data.game) setGame(data.game);
+               if (data.mode) setMode(data.mode);
+               if (data.active_themes) setActiveThemes(data.active_themes);
+               const pIdx = (data.players || []).findIndex(p => p.uid === user.uid);
+               if (pIdx !== -1) setMyPlayerIndex(pIdx);
+             }
+          })
           .subscribe();
 
       } catch (err) {
@@ -290,14 +279,8 @@ export default function App() {
     };
 
     fetchAndSubscribe();
-    
-    // クリーンアップ関数
-    return () => { 
-      if(subscription) {
-        supabase.removeChannel(subscription);
-      }
-    };
-  }, [isOnline, roomId, user, supabase]); // 依存関係を整理
+    return () => { if(subscription) supabase.removeChannel(subscription); };
+  }, [isOnline, roomId, user, supabase]);
 
   useEffect(() => {
     if (step === 'LOBBY' && roomData?.status === 'playing') setStep('BOARD');
@@ -557,21 +540,28 @@ export default function App() {
     return () => clearTimeout(t);
   }, [game?.turn, game?.phase, game?.mode, activeThemes, isOnline, roomData?.host_uid, user?.uid, updateGame]);
 
+  // ★ 修正点: canPlayCard 内での安全な値取得を強化
   const canPlayCard = (card) => {
     if (!game || !card) return false;
-    const actualViewIndex = isOnline ? Math.max(0, myPlayerIndex) : 0;
+    
+    // myPlayerIndexが未取得(-1)の場合は操作不能にする
+    if (isOnline && myPlayerIndex < 0) return false;
+    
+    const actualViewIndex = isOnline ? myPlayerIndex : 0;
     if (game.phase !== 'WAITING') return false;
     if (game.turn !== actualViewIndex) return false;
     if (game.mode === 'doubt') return true; 
     
     const tid = getSafeTheme(game.currentThemeId || pendingTheme, activeThemes);
     let targetValue = 0;
+    
     if (game.fieldCards && game.fieldCards.length > 0) {
       const topCard = game.fieldCards[game.fieldCards.length - 1];
       if (topCard) {
         targetValue = topCard.declaredPref ? (topCard.declaredPref[tid] || 0) : (topCard[tid] || 0);
       }
     }
+    
     return (card[tid] || 0) >= targetValue;
   };
 
@@ -816,17 +806,17 @@ export default function App() {
           
           {/* 対戦相手のステータス表示 */}
           <div className="absolute top-2 sm:top-4 left-0 right-0 flex justify-center gap-2 sm:gap-3 z-40 px-2 sm:px-4">
-            {game.players.map((p, i) => {
+            {(game.players || []).map((p, i) => {
               if (i === actualViewIndex) return null;
               const isTurn = game.turn === i;
               return (
                 <div key={i} className={`flex flex-col items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl border transition-all duration-300 ${isTurn ? 'bg-emerald-700/80 border-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.3)] scale-105 sm:scale-110 z-10' : 'bg-emerald-950/60 border-emerald-800/50 opacity-80'}`}>
-                  <span className={`text-[9px] sm:text-[10px] font-black truncate max-w-[50px] sm:max-w-[60px] ${isTurn ? 'text-emerald-100' : 'text-emerald-500'}`}>{p.name}</span>
+                  <span className={`text-[9px] sm:text-[10px] font-black truncate max-w-[50px] sm:max-w-[60px] ${isTurn ? 'text-emerald-100' : 'text-emerald-500'}`}>{p?.name || `Player ${i+1}`}</span>
                   <div className="flex items-center gap-1">
-                    <div className="flex -space-x-1.5">{Array.from({ length: Math.min(p.hand.length, 5) }).map((_, idx) => <div key={idx} className={`w-2.5 h-3.5 sm:w-3 sm:h-4 rounded-sm shadow-sm border ${isTurn ? 'bg-emerald-500 border-emerald-200' : 'bg-emerald-800 border-emerald-900'}`} />)}</div>
-                    <span className={`text-[10px] sm:text-xs font-black ml-1 ${isTurn ? 'text-white' : 'text-emerald-600'}`}>{p.hand.length}</span>
+                    <div className="flex -space-x-1.5">{Array.from({ length: Math.min((p?.hand || []).length, 5) }).map((_, idx) => <div key={idx} className={`w-2.5 h-3.5 sm:w-3 sm:h-4 rounded-sm shadow-sm border ${isTurn ? 'bg-emerald-500 border-emerald-200' : 'bg-emerald-800 border-emerald-900'}`} />)}</div>
+                    <span className={`text-[10px] sm:text-xs font-black ml-1 ${isTurn ? 'text-white' : 'text-emerald-600'}`}>{(p?.hand || []).length}</span>
                   </div>
-                  {p.passed && <span className="absolute -bottom-1.5 sm:-bottom-2 bg-slate-700 text-slate-300 text-[7px] sm:text-[8px] px-1.5 sm:px-2 py-0.5 rounded-full border border-slate-600 font-black shadow-md">PASS</span>}
+                  {p?.passed && <span className="absolute -bottom-1.5 sm:-bottom-2 bg-slate-700 text-slate-300 text-[7px] sm:text-[8px] px-1.5 sm:px-2 py-0.5 rounded-full border border-slate-600 font-black shadow-md">PASS</span>}
                 </div>
               );
             })}
@@ -841,7 +831,7 @@ export default function App() {
                   <div className="bg-emerald-800/80 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] border border-emerald-500/40 shadow-2xl backdrop-blur-md">
                     <p className="text-[10px] sm:text-sm font-black text-emerald-200 mb-4 sm:mb-6 tracking-widest drop-shadow-md">勝負する属性を選んでください</p>
                     <div className="flex justify-center gap-2 sm:gap-4">
-                      {activeThemes.map(tId => {
+                      {(activeThemes || []).map(tId => {
                         const TDef = THEME_DEFS[tId];
                         if(!TDef) return null;
                         return (
@@ -859,7 +849,7 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="bg-emerald-950/80 px-6 sm:px-8 py-4 sm:py-5 rounded-2xl sm:rounded-3xl border border-emerald-800/50 shadow-lg backdrop-blur-md inline-block">
-                    <p className="text-xs sm:text-sm font-black text-emerald-400/80 animate-pulse tracking-widest">{game.players[game.turn]?.name} が属性を選択中...</p>
+                    <p className="text-xs sm:text-sm font-black text-emerald-400/80 animate-pulse tracking-widest">{game.players[game.turn]?.name || "誰か"} が属性を選択中...</p>
                   </div>
                 )}
               </div>
@@ -891,7 +881,7 @@ export default function App() {
               ))}
               
               {/* ダウト判定中のカード描画 */}
-              {game.phase === 'DOUBT_WINDOW' && game.pending && (
+              {game.phase === 'DOUBT_WINDOW' && game.pending && game.pending.card && (
                 <div className="absolute transform transition-all duration-500 scale-110 -translate-y-4 shadow-2xl" style={{ rotate: `${((game.fieldCards || []).length*7)%30-15}deg`, zIndex: (game.fieldCards || []).length + 10 }}>
                   <CardView card={game.pending.card} activeThemes={activeThemes} highlight={game.currentThemeId} faceDown={true} declaredName={game.pending.declaredPref?.name} size="normal" />
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none animate-pulse">
@@ -947,7 +937,7 @@ export default function App() {
                    </div>
                  );
                })}
-               {(!cp?.hand || cp.hand.length === 0) && <div className="text-emerald-700/50 font-black italic text-xl sm:text-2xl h-full flex items-center justify-center uppercase tracking-widest w-full">No Cards</div>}
+               {(!cp?.hand || cp?.hand?.length === 0) && <div className="text-emerald-700/50 font-black italic text-xl sm:text-2xl h-full flex items-center justify-center uppercase tracking-widest w-full">No Cards</div>}
              </div>
            </div>
         </div>
