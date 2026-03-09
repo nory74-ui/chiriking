@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Users, Map as MapIcon, Play, Award, 
+  Users, Map as MapIcon, BarChart, Sprout, Factory, 
+  CloudRain, Activity, Play, Award, 
   AlertCircle, CheckCircle, XCircle, 
   User, Plus, ClipboardList, ShieldAlert as DoubtIcon,
-  Search, BookOpen
+  Search, BookOpen, Check
 } from 'lucide-react';
 
 /**
@@ -81,52 +82,58 @@ const PREFECTURES = [
 
 const THEME_DEFS = {
   population: { id: 'population', name: '人口', unit: '万人', icon: Users, color: 'text-blue-600' },
-  area: { id: 'area', name: '面積', unit: 'km²', icon: MapIcon, color: 'text-green-600' }
+  area: { id: 'area', name: '面積', unit: 'km²', icon: MapIcon, color: 'text-green-600' },
+  density: { id: 'density', name: '人口密度', unit: '人/km²', icon: BarChart, color: 'text-purple-600' },
+  agriculture: { id: 'agriculture', name: '農業産出額', unit: '億円', icon: Sprout, color: 'text-orange-600' },
+  industry: { id: 'industry', name: '製造品出荷額', unit: '億円', icon: Factory, color: 'text-slate-700' },
+  precipitation: { id: 'precipitation', name: '年間降水量', unit: 'mm', icon: CloudRain, color: 'text-cyan-600' },
+  agingRate: { id: 'agingRate', name: '高齢化率', unit: '%', icon: Activity, color: 'text-red-600' }
 };
 
-// 属性の安全な取得 (不正な値が渡された場合のフォールバック)
-const safeTheme = (theme) => ['population', 'area'].includes(theme) ? theme : 'population';
+// 選択された属性群の中から安全に現在の属性を取得する
+const getSafeTheme = (theme, activeThemesList) => {
+  return activeThemesList.includes(theme) ? theme : activeThemesList[0];
+};
 
 // ==========================================
 // 2. UIコンポーネント
 // ==========================================
 const CardView = ({ card, activeThemes, faceDown, selectable, onClick, highlight, size = 'normal', declaredName }) => {
-  const baseClasses = "rounded-xl shadow-lg border-2 flex flex-col items-center justify-between relative transition-all duration-200 shrink-0";
+  const baseClasses = "rounded-xl shadow-lg border-2 flex flex-col items-center justify-between relative transition-all duration-200 shrink-0 overflow-hidden";
   
-  // CSSクラスで確実に読めるフォントサイズを定義
   let sz;
   if (size === 'small') {
     sz = {
-      card: "w-20 h-28 sm:w-24 sm:h-36 p-1.5 sm:p-2",
+      card: "w-20 h-32 sm:w-24 sm:h-36 p-1.5 sm:p-2",
       id: "text-[8px] sm:text-[10px]",
-      name: "text-sm sm:text-lg",
-      attr: "text-[9px] sm:text-[11px] px-1 sm:px-1.5 py-0.5 sm:py-1",
+      name: "text-[11px] sm:text-sm",
+      attr: "text-[8px] sm:text-[10px] px-1 py-0.5",
       icon: 10,
-      unit: "text-[7px] sm:text-[8px]",
-      back: "text-[12px] sm:text-[14px]",
-      declared: "text-[8px] sm:text-[10px] px-2 py-0.5 bottom-2"
+      unit: "text-[6px] sm:text-[7px]",
+      back: "text-[10px] sm:text-[12px]",
+      declared: "text-[7px] sm:text-[9px] px-1.5 py-0.5 bottom-1.5"
     };
   } else if (size === 'large') {
     sz = {
-      card: "w-32 h-48 sm:w-40 sm:h-56 p-3 sm:p-4",
+      card: "w-32 h-48 sm:w-40 sm:h-64 p-3 sm:p-4",
       id: "text-xs sm:text-sm",
-      name: "text-2xl sm:text-3xl",
-      attr: "text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2",
+      name: "text-xl sm:text-2xl",
+      attr: "text-[10px] sm:text-xs px-2 py-1",
       icon: 14,
-      unit: "text-[10px] sm:text-xs",
-      back: "text-[18px] sm:text-[24px]",
+      unit: "text-[8px] sm:text-[10px]",
+      back: "text-[16px] sm:text-[20px]",
       declared: "text-xs sm:text-sm px-3 py-1 bottom-4"
     };
   } else {
     sz = {
-      card: "w-24 h-36 sm:w-28 sm:h-40 p-2 sm:p-2.5",
-      id: "text-[10px] sm:text-xs",
-      name: "text-lg sm:text-xl",
-      attr: "text-[11px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5",
+      card: "w-24 h-36 sm:w-28 sm:h-44 p-2 sm:p-2.5",
+      id: "text-[9px] sm:text-[11px]",
+      name: "text-sm sm:text-lg",
+      attr: "text-[9px] sm:text-[11px] px-1.5 py-0.5",
       icon: 12,
-      unit: "text-[8px] sm:text-[9px]",
-      back: "text-[14px] sm:text-[18px]",
-      declared: "text-[10px] sm:text-xs px-2.5 py-0.5 bottom-3"
+      unit: "text-[7px] sm:text-[8px]",
+      back: "text-[12px] sm:text-[16px]",
+      declared: "text-[9px] sm:text-[11px] px-2.5 py-0.5 bottom-3"
     };
   }
 
@@ -143,7 +150,8 @@ const CardView = ({ card, activeThemes, faceDown, selectable, onClick, highlight
   }
   
   if (!card) return null;
-  const themes = (activeThemes || ['population', 'area']).map(id => THEME_DEFS[id]);
+  // 選択された2つの属性のみをカードに表示
+  const themes = (activeThemes || ['population', 'area']).map(id => THEME_DEFS[id]).filter(Boolean);
 
   return (
     <div 
@@ -152,11 +160,11 @@ const CardView = ({ card, activeThemes, faceDown, selectable, onClick, highlight
     >
       <div className={`${sz.id} text-slate-400 w-full text-left font-bold italic px-1`}>No.{card.id}</div>
       <div className={`${sz.name} font-black text-center tracking-tighter leading-tight drop-shadow-sm flex-1 flex items-center justify-center break-words w-full`}>{card.name}</div>
-      <div className="flex flex-col w-full space-y-0.5 sm:space-y-1 mb-1">
+      <div className="flex flex-col w-full space-y-1 mb-1">
         {themes.map(t => (
-          <div key={t.id} className={`flex justify-between items-center ${sz.attr} rounded ${highlight === t.id ? 'bg-emerald-600 text-white font-black shadow-inner scale-105' : 'text-slate-600 bg-slate-100 font-bold'}`}>
+          <div key={t.id} className={`flex justify-between items-center ${sz.attr} rounded-sm ${highlight === t.id ? 'bg-emerald-600 text-white font-black shadow-inner scale-[1.05]' : 'text-slate-600 bg-slate-50 font-bold border border-slate-200'}`}>
             <span className="flex items-center gap-0.5 whitespace-nowrap"><t.icon size={sz.icon} className={highlight === t.id ? "text-white" : t.color}/></span>
-            <span className="whitespace-nowrap truncate pl-0.5 sm:pl-1 flex-1 text-right">{card[t.id]}<span className={`${sz.unit} opacity-80 ml-0.5`}>{t.unit}</span></span>
+            <span className="whitespace-nowrap truncate pl-1 flex-1 text-right">{card[t.id]}<span className={`${sz.unit} opacity-80 ml-0.5`}>{t.unit}</span></span>
           </div>
         ))}
       </div>
@@ -175,7 +183,7 @@ export default function App() {
   const [step, setStep] = useState('MENU');
   const [mode, setMode] = useState('daifugo'); 
   const [playerCount, setPlayerCount] = useState(1);
-  const activeThemes = ['population', 'area'];
+  const [activeThemes, setActiveThemes] = useState(['population', 'area']); // 今回使う2つの属性
   const [game, setGame] = useState(null);
   const [pendingTheme, setPendingTheme] = useState('population');
   
@@ -233,11 +241,12 @@ export default function App() {
     let subscription;
     const fetchAndSubscribe = async () => {
       try {
-        const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single();
+        const { data, error } = await supabase.from('rooms').select('*').eq('id', roomId).single();
         if (data) {
           setRoomData(data);
           if (data.game) setGame(data.game);
           if (data.mode) setMode(data.mode);
+          if (data.active_themes) setActiveThemes(data.active_themes);
           const pIdx = data.players.findIndex(p => p.uid === user.uid);
           if (pIdx !== -1) setMyPlayerIndex(pIdx);
         }
@@ -248,6 +257,7 @@ export default function App() {
              setRoomData(data);
              if (data.game) setGame(data.game);
              if (data.mode) setMode(data.mode);
+             if (data.active_themes) setActiveThemes(data.active_themes);
              const pIdx = data.players.findIndex(p => p.uid === user.uid);
              if (pIdx !== -1) setMyPlayerIndex(pIdx);
           })
@@ -283,7 +293,7 @@ export default function App() {
     try {
       await supabase.from('rooms').insert([{
         id: newRoomId, host_uid: user.uid, players: [{ uid: user.uid, name: nickname || 'ホスト' }],
-        status: 'waiting', mode: mode, active_themes: ['population', 'area'],
+        status: 'waiting', mode: mode, active_themes: activeThemes,
         game: { target_player_count: playerCount } 
       }]);
       setRoomId(newRoomId);
@@ -320,7 +330,7 @@ export default function App() {
       }));
       setGame({
         mode, players, turn: 0, fieldCards: [], currentThemeId: null, winner: null, phase: 'WAITING',
-        message: 'ゲームスタート！勝負属性を選んでカードを出してください。', deck: deck.slice(20)
+        message: 'ゲームスタート！勝負属性を選んでカードを出してください。', deck: deck.slice(20), lastPlayedIdx: 0
       });
       setStep('BOARD');
     }
@@ -336,7 +346,7 @@ export default function App() {
     }));
     const initialGame = {
       mode, players, turn: 0, fieldCards: [], currentThemeId: null, winner: null, phase: 'WAITING',
-      message: 'ゲームスタート！親は属性を選んでください。', deck: deck.slice(20)
+      message: 'ゲームスタート！親は属性を選んでください。', deck: deck.slice(20), lastPlayedIdx: 0
     };
     await supabase.from('rooms').update({ status: 'playing', game: initialGame }).eq('id', roomId);
   };
@@ -358,7 +368,7 @@ export default function App() {
 
   const handlePlayBasic = (idx, card, theme = null) => {
     updateGame(prev => {
-      const activeT = safeTheme(prev.currentThemeId || theme || pendingTheme);
+      const activeT = getSafeTheme(prev.currentThemeId || theme || pendingTheme, activeThemes);
       const newPlayers = prev.players.map((p, i) => i === idx ? { ...p, hand: p.hand.filter(c => c.id !== card.id) } : p);
       if (newPlayers[idx].hand.length === 0) return { ...prev, players: newPlayers, winner: newPlayers[idx], phase: 'OVER' };
       return { ...prev, lastPlayedIdx: idx, players: newPlayers.map(p => ({ ...p, passed: false })), fieldCards: [...prev.fieldCards, card], currentThemeId: activeT, phase: 'RESOLVING', message: `${prev.players[idx].name}のカード！` };
@@ -379,7 +389,7 @@ export default function App() {
     if (!cardToPlay || !declaredPref) return;
 
     updateGame(prev => {
-      const tid = safeTheme(prev.currentThemeId || pendingTheme);
+      const tid = getSafeTheme(prev.currentThemeId || pendingTheme, activeThemes);
       const cp = prev.players[prev.turn];
       if(!cp) return prev;
 
@@ -398,28 +408,22 @@ export default function App() {
     updateGame(prev => {
       if (prev.phase !== 'DOUBT_WINDOW' || !prev.pending) return prev;
       
-      const tid = safeTheme(prev.pending.themeAtPlay);
+      const tid = getSafeTheme(prev.pending.themeAtPlay, activeThemes);
       
-      // 場が空の時は直前のカードがないため targetValue は 0
       let targetValue = 0;
       if (prev.fieldCards && prev.fieldCards.length > 0) {
         const topCard = prev.fieldCards[prev.fieldCards.length - 1];
-        // 場のカードがダウト経由(declaredPrefあり)ならその数値を、そうでなければ実際の数値を基準にする
         targetValue = topCard.declaredPref ? (topCard.declaredPref[tid] || 0) : (topCard[tid] || 0);
       }
       
       const actualValue = prev.pending.card[tid] || 0;
-      
-      // ダウトが失敗(真実である)条件：実際の数値が場のカード以上、かつ宣言したカードと実際のカードが一致
       const isTruth = (actualValue >= targetValue) && (prev.pending.card.id === prev.pending.declaredPref.id);
       
       const loserId = isTruth ? doubterId : prev.pending.playerIndex;
       
       let newHand = [...(prev.players[loserId]?.hand || [])];
       let currentDeck = [...(prev.deck || [])];
-      while (newHand.length < 5 && currentDeck.length > 0) {
-        newHand.push(currentDeck.shift());
-      }
+      while (newHand.length < 5 && currentDeck.length > 0) newHand.push(currentDeck.shift());
       
       return { 
         ...prev, deck: currentDeck, 
@@ -438,7 +442,6 @@ export default function App() {
       if (prev.phase !== 'DOUBT_WINDOW' || !prev.pending) return prev;
       if (prev.players[prev.turn].hand.length === 0) return { ...prev, winner: prev.players[prev.turn], phase: 'OVER' };
       
-      // ダウトがスルーされた場合、そのカードに「宣言した都道府県(declaredPref)」の情報を付与して場に置く
       const acceptedCard = { ...prev.pending.card, declaredPref: prev.pending.declaredPref };
       
       return { 
@@ -450,7 +453,6 @@ export default function App() {
 
   useEffect(() => {
     if (!game) return;
-    // タイマー管理の最適化: ホストのみが進行処理を行う
     const currentHostId = roomData?.host_uid;
     const isMyTurnToHostLogic = !isOnline || currentHostId === user?.uid;
 
@@ -477,7 +479,7 @@ export default function App() {
     const t = setTimeout(() => {
       const cpuTheme = activeThemes[Math.floor(Math.random() * activeThemes.length)];
       if (game.mode === 'daifugo') {
-        const tid = safeTheme(game.currentThemeId || cpuTheme);
+        const tid = getSafeTheme(game.currentThemeId || cpuTheme, activeThemes);
         const targetValue = game.fieldCards.length === 0 ? 0 : (game.fieldCards[game.fieldCards.length-1][tid] || 0);
         const playableCards = p.hand.filter(c => (c[tid] || 0) >= targetValue).sort((a,b)=>(a[tid] || 0)-(b[tid] || 0));
         
@@ -498,7 +500,7 @@ export default function App() {
         }
         
         updateGame(prev => {
-          const tid = safeTheme(prev.currentThemeId || cpuTheme);
+          const tid = getSafeTheme(prev.currentThemeId || cpuTheme, activeThemes);
           return {
             ...prev, 
             players: prev.players.map((pl, i) => i === prev.turn ? { ...pl, hand: pl.hand.filter(c => c.id !== actualCard.id) } : pl), 
@@ -521,8 +523,7 @@ export default function App() {
     if (game.turn !== actualViewIndex) return false;
     if (game.mode === 'doubt') return true; 
     
-    const tid = safeTheme(game.currentThemeId || pendingTheme);
-    
+    const tid = getSafeTheme(game.currentThemeId || pendingTheme, activeThemes);
     let targetValue = 0;
     if (game.fieldCards && game.fieldCards.length > 0) {
       const topCard = game.fieldCards[game.fieldCards.length - 1];
@@ -531,10 +532,9 @@ export default function App() {
     return (card[tid] || 0) >= targetValue;
   };
 
-  // 端末サイズに合わせたスタイル
   const pageBaseStyle = {
     minHeight: 'calc(var(--vh, 1vh) * 100)',
-    backgroundColor: '#064e3b', // emerald-900
+    backgroundColor: '#064e3b',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -573,17 +573,15 @@ export default function App() {
     <div style={pageBaseStyle} className="p-4 sm:p-6 text-white text-center">
       <div className="bg-emerald-800/80 border border-emerald-500/20 p-6 sm:p-10 rounded-[32px] sm:rounded-[48px] max-w-lg w-full shadow-2xl animate-fade-in backdrop-blur-md max-h-[90vh] overflow-y-auto scrollbar-hide text-left">
         <h2 className="text-2xl sm:text-3xl font-black text-emerald-300 mb-6 italic drop-shadow-md text-center">遊び方・ルール</h2>
-        
         <div className="space-y-6">
           <section className="bg-emerald-950/50 p-5 rounded-2xl border border-emerald-800">
             <h3 className="text-lg sm:text-xl font-black text-emerald-400 mb-3 border-b border-emerald-800 pb-2">基本の遊び方</h3>
             <ul className="list-disc list-inside space-y-2 text-xs sm:text-sm text-emerald-100 ml-2">
               <li>トランプの「大富豪」のように、手札を早く無くした人が勝ちです。</li>
-              <li>場に出ているカードの「勝負属性（人口・面積など）」の数字より、<strong>大きい数字</strong>を持つカードを出せます。</li>
+              <li>場に出ているカードの「勝負属性」の数字より、<strong>大きい数字</strong>を持つカードを出せます。</li>
               <li>全員がパスして場が流れたら、最後にカードを出した人が「親」になり、<strong>勝負する属性を自由に選び直して</strong>カードを出せます。</li>
             </ul>
           </section>
-
           <section className="bg-emerald-950/50 p-5 rounded-2xl border border-emerald-800">
             <h3 className="text-lg sm:text-xl font-black text-emerald-400 mb-3 border-b border-emerald-800 pb-2 flex items-center gap-2">
               <Play size={18} /> 基本モード
@@ -592,7 +590,6 @@ export default function App() {
               数字の大きさを純粋に競う王道ルールです。手札の数値をしっかり見極め、場が流れた時に自分に有利な属性を選ぶ戦略がカギになります。
             </p>
           </section>
-
           <section className="bg-emerald-950/50 p-5 rounded-2xl border border-emerald-800">
             <h3 className="text-lg sm:text-xl font-black text-red-400 mb-3 border-b border-emerald-800 pb-2 flex items-center gap-2">
               <DoubtIcon size={18} /> ダウトモード
@@ -606,7 +603,6 @@ export default function App() {
             </ul>
           </section>
         </div>
-
         <div className="mt-8 text-center">
           <button onClick={() => setStep('MENU')} className="w-full bg-emerald-500 hover:bg-emerald-400 text-emerald-950 py-4 rounded-3xl font-black text-lg sm:text-xl shadow-lg active:scale-95 transition-all">
             タイトルに戻る
@@ -623,10 +619,52 @@ export default function App() {
         <p className="text-[10px] sm:text-xs font-bold text-emerald-200/60 mb-8">{isOnline ? "参加を待つ人間の数を選択してください" : "残りの枠にはCPUが入ります（計4人）"}</p>
         <div className="flex flex-col gap-3 sm:gap-4 mb-8">
           {[1, 2, 3, 4].map(num => (
-            <button key={num} onClick={() => { setPlayerCount(num); setStep('RULE'); }} className={`py-4 rounded-2xl font-black text-lg sm:text-xl border-2 transition-all duration-200 flex items-center justify-center gap-3 ${playerCount === num ? 'bg-emerald-500 text-emerald-950 border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.5)] scale-105' : 'bg-emerald-950/50 border-emerald-800 text-emerald-400 hover:border-emerald-500'}`}><Users size={20} /> {num}人</button>
+            <button key={num} onClick={() => { setPlayerCount(num); setStep('THEME'); }} className={`py-4 rounded-2xl font-black text-lg sm:text-xl border-2 transition-all duration-200 flex items-center justify-center gap-3 ${playerCount === num ? 'bg-emerald-500 text-emerald-950 border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.5)] scale-105' : 'bg-emerald-950/50 border-emerald-800 text-emerald-400 hover:border-emerald-500'}`}><Users size={20} /> {num}人</button>
           ))}
         </div>
         <button onClick={() => setStep('MENU')} className="text-xs sm:text-sm font-bold text-emerald-400/60 hover:text-emerald-300 underline">戻る</button>
+      </div>
+    </div>
+  );
+
+  // 新規追加：ゲームで使う属性を2つ選ぶ画面
+  if (step === 'THEME') return (
+    <div style={pageBaseStyle} className="p-6 text-white text-center">
+      <div className="bg-emerald-800/80 border border-emerald-500/20 p-6 sm:p-10 rounded-[32px] sm:rounded-[48px] max-w-lg w-full shadow-2xl animate-fade-in backdrop-blur-md">
+        <h2 className="text-2xl sm:text-3xl font-black text-emerald-300 mb-4 italic drop-shadow-md">属性選択</h2>
+        <p className="text-xs sm:text-sm font-bold text-emerald-200/60 mb-6">今回勝負する属性を<span className="text-white text-lg px-1">2つ</span>選んでください</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
+          {Object.values(THEME_DEFS).map(t => {
+            const isSelected = activeThemes.includes(t.id);
+            return (
+              <button 
+                key={t.id} 
+                onClick={() => {
+                  if (isSelected) {
+                    setActiveThemes(prev => prev.filter(id => id !== t.id));
+                  } else {
+                    if (activeThemes.length < 2) {
+                      setActiveThemes(prev => [...prev, t.id]);
+                    }
+                  }
+                }} 
+                className={`p-3 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all ${isSelected ? 'bg-emerald-500 border-emerald-300 text-emerald-950 scale-105 shadow-[0_0_15px_rgba(16,185,129,0.5)]' : 'bg-emerald-950/50 border-emerald-800 text-emerald-400 hover:border-emerald-600'}`}
+              >
+                <t.icon size={24} />
+                <span className="text-xs font-black">{t.name}</span>
+                {isSelected && <Check size={16} className="absolute top-2 right-2 text-emerald-950" />}
+              </button>
+            );
+          })}
+        </div>
+        <button 
+          disabled={activeThemes.length !== 2}
+          onClick={() => setStep('RULE')} 
+          className={`w-full py-4 sm:py-5 rounded-3xl font-black text-xl sm:text-2xl shadow-lg transition-all ${activeThemes.length === 2 ? 'bg-emerald-400 hover:bg-emerald-300 text-emerald-950 active:scale-95' : 'bg-emerald-950 text-emerald-800 cursor-not-allowed'}`}
+        >
+          次へ
+        </button>
+        <button onClick={() => setStep('PLAYER_SELECT')} className="mt-6 text-xs sm:text-sm font-bold text-emerald-400/60 hover:text-emerald-300 underline">戻る</button>
       </div>
     </div>
   );
@@ -708,7 +746,7 @@ export default function App() {
   if (step === 'BOARD' && game) {
     const actualViewIndex = isOnline ? Math.max(0, myPlayerIndex) : 0;
     const cp = game.players[actualViewIndex];
-    const currentOrPendingThemeId = safeTheme(game.currentThemeId || pendingTheme);
+    const currentOrPendingThemeId = getSafeTheme(game.currentThemeId || pendingTheme, activeThemes);
     const td = THEME_DEFS[currentOrPendingThemeId];
     const currentMode = game.mode || mode;
 
@@ -761,20 +799,24 @@ export default function App() {
                   <div className="bg-emerald-800/80 p-4 sm:p-6 rounded-[24px] sm:rounded-[32px] border border-emerald-500/40 shadow-2xl backdrop-blur-md">
                     <p className="text-[10px] sm:text-sm font-black text-emerald-200 mb-4 sm:mb-6 tracking-widest drop-shadow-md">勝負する属性を選んでください</p>
                     <div className="flex justify-center gap-2 sm:gap-4">
-                      {Object.values(THEME_DEFS).map(TDef => (
-                        <button 
-                          key={TDef.id} 
-                          onClick={() => setPendingTheme(TDef.id)} 
-                          className={`flex-1 py-3 sm:py-4 rounded-xl sm:rounded-2xl font-black flex flex-col items-center gap-1 sm:gap-2 border-2 transition-all duration-200 ${pendingTheme === TDef.id ? 'bg-emerald-400 text-emerald-950 border-emerald-300 scale-105 shadow-[0_5px_15px_rgba(52,211,153,0.4)]' : 'bg-emerald-950/50 border-emerald-800 text-emerald-500 hover:border-emerald-600'}`}
-                        >
-                          <TDef.icon size={20} className="sm:w-6 sm:h-6"/> 
-                          <span className="text-xs sm:text-sm">{TDef.name}</span>
-                        </button>
-                      ))}
+                      {activeThemes.map(tId => {
+                        const TDef = THEME_DEFS[tId];
+                        if(!TDef) return null;
+                        return (
+                          <button 
+                            key={TDef.id} 
+                            onClick={() => setPendingTheme(TDef.id)} 
+                            className={`flex-1 py-3 sm:py-4 rounded-xl sm:rounded-2xl font-black flex flex-col items-center gap-1 sm:gap-2 border-2 transition-all duration-200 ${pendingTheme === TDef.id ? 'bg-emerald-400 text-emerald-950 border-emerald-300 scale-105 shadow-[0_5px_15px_rgba(52,211,153,0.4)]' : 'bg-emerald-950/50 border-emerald-800 text-emerald-500 hover:border-emerald-600'}`}
+                          >
+                            <TDef.icon size={20} className="sm:w-6 sm:h-6"/> 
+                            <span className="text-xs sm:text-sm">{TDef.name}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : (
-                  <div className="bg-emerald-950/80 px-6 sm:px-8 py-4 sm:py-5 rounded-2xl sm:rounded-3xl border border-emerald-800/50 shadow-lg backdrop-blur-md">
+                  <div className="bg-emerald-950/80 px-6 sm:px-8 py-4 sm:py-5 rounded-2xl sm:rounded-3xl border border-emerald-800/50 shadow-lg backdrop-blur-md inline-block">
                     <p className="text-xs sm:text-sm font-black text-emerald-400/80 animate-pulse tracking-widest">{game.players[game.turn]?.name} が属性を選択中...</p>
                   </div>
                 )}
@@ -799,17 +841,17 @@ export default function App() {
             )}
             
             {/* 場のカード */}
-            <div className="relative w-32 h-44 sm:w-40 sm:h-52 flex items-center justify-center mt-2 sm:mt-4">
+            <div className="relative w-32 h-48 sm:w-40 sm:h-64 flex items-center justify-center mt-2 sm:mt-4">
               {game.fieldCards.map((c, i) => (
                 <div key={`field-${i}`} className="absolute transform transition-all duration-500 drop-shadow-2xl" style={{ rotate: `${(i*7)%30-15}deg`, zIndex: i }}>
-                  <CardView card={c} activeThemes={['population', 'area']} highlight={game.currentThemeId} faceDown={currentMode === 'doubt'} declaredName={currentMode === 'doubt' ? (c.declaredPref?.name || PREFECTURES.find(p=>p.id===c.id)?.name) : null} size="normal" />
+                  <CardView card={c} activeThemes={activeThemes} highlight={game.currentThemeId} faceDown={currentMode === 'doubt'} declaredName={currentMode === 'doubt' ? (c.declaredPref?.name || PREFECTURES.find(p=>p.id===c.id)?.name) : null} size="normal" />
                 </div>
               ))}
               
               {/* ダウト判定中のカード描画 */}
               {game.phase === 'DOUBT_WINDOW' && game.pending && (
                 <div className="absolute transform transition-all duration-500 scale-110 -translate-y-4 shadow-2xl" style={{ rotate: `${(game.fieldCards.length*7)%30-15}deg`, zIndex: game.fieldCards.length + 10 }}>
-                  <CardView card={game.pending.card} activeThemes={['population', 'area']} highlight={game.currentThemeId} faceDown={true} declaredName={game.pending.declaredPref?.name} size="normal" />
+                  <CardView card={game.pending.card} activeThemes={activeThemes} highlight={game.currentThemeId} faceDown={true} declaredName={game.pending.declaredPref?.name} size="normal" />
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none animate-pulse">
                      <div className="bg-red-600 text-white font-black px-4 sm:px-5 py-1.5 sm:py-2 rounded-full shadow-[0_0_20px_rgba(239,68,68,0.8)] text-sm sm:text-lg italic uppercase border-2 border-white flex items-center gap-1">
                        <DoubtIcon size={16} className="sm:w-5 sm:h-5"/> DOUBT?
@@ -819,7 +861,7 @@ export default function App() {
               )}
               
               {game.fieldCards.length === 0 && !game.pending && (
-                <div className="w-24 h-36 sm:w-28 sm:h-40 border-2 sm:border-4 border-dashed border-emerald-700/30 rounded-xl sm:rounded-2xl flex items-center justify-center">
+                <div className="w-28 h-48 sm:w-32 sm:h-56 border-2 sm:border-4 border-dashed border-emerald-700/30 rounded-xl sm:rounded-2xl flex items-center justify-center">
                   <span className="text-emerald-700/40 font-black italic text-xl sm:text-2xl uppercase tracking-widest">Field</span>
                 </div>
               )}
@@ -828,7 +870,7 @@ export default function App() {
         </div>
 
         {/* 自分の手札セクション */}
-        <div className={`h-48 sm:h-56 w-full flex flex-col border-t-2 p-2 sm:p-4 pb-2 sm:pb-4 shrink-0 shadow-[0_-20px_50px_rgba(0,0,0,0.5)] z-50 backdrop-blur-2xl relative transition-colors duration-500 ${game.turn === actualViewIndex ? 'bg-emerald-800/90 border-emerald-400' : 'bg-emerald-950/95 border-emerald-900'}`}>
+        <div className={`h-56 sm:h-64 w-full flex flex-col border-t-2 p-2 sm:p-4 pb-2 sm:pb-4 shrink-0 shadow-[0_-20px_50px_rgba(0,0,0,0.5)] z-50 backdrop-blur-2xl relative transition-colors duration-500 ${game.turn === actualViewIndex ? 'bg-emerald-800/90 border-emerald-400' : 'bg-emerald-950/95 border-emerald-900'}`}>
            <div className="flex justify-between items-center mb-2 sm:mb-4 max-w-lg mx-auto w-full relative px-2 sm:px-0 shrink-0">
              <div className={`text-[9px] sm:text-[10px] font-black italic uppercase flex items-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-1 sm:py-1.5 rounded-full shadow-inner ${game.turn === actualViewIndex ? 'bg-emerald-400 text-emerald-950 shadow-emerald-300' : 'bg-emerald-900 text-emerald-600'}`}>
                <ClipboardList size={12} className="sm:w-3.5 sm:h-3.5"/> {game.turn === actualViewIndex ? 'YOUR TURN' : 'HAND'}
@@ -854,10 +896,10 @@ export default function App() {
                    <div key={c.id} className={`${game.turn === actualViewIndex && game.phase === 'WAITING' && selectable ? 'animate-[bounce_2s_infinite]' : ''}`} style={{animationDelay: `${Math.random()}s`}}>
                      <CardView 
                        card={c} 
-                       activeThemes={['population', 'area']} 
+                       activeThemes={activeThemes} 
                        selectable={selectable} 
-                       onClick={() => currentMode === 'daifugo' ? handlePlayBasic(actualViewIndex, c, safeTheme(game.currentThemeId || pendingTheme)) : handleDoubtPlayClick(c)} 
-                       highlight={safeTheme(game.currentThemeId || pendingTheme)} 
+                       onClick={() => currentMode === 'daifugo' ? handlePlayBasic(actualViewIndex, c, getSafeTheme(game.currentThemeId || pendingTheme, activeThemes)) : handleDoubtPlayClick(c)} 
+                       highlight={getSafeTheme(game.currentThemeId || pendingTheme, activeThemes)} 
                        size="small"
                      />
                    </div>
@@ -874,7 +916,7 @@ export default function App() {
             <h2 className="text-lg sm:text-2xl font-black text-emerald-300 mb-4 sm:mb-6 drop-shadow-md">どの都道府県として出しますか？</h2>
             
             <div className="mb-4 sm:mb-8 flex justify-center scale-100 sm:scale-110 drop-shadow-2xl">
-              <CardView card={selectedCardToPlay} activeThemes={['population', 'area']} highlight={safeTheme(game.currentThemeId || pendingTheme)} size="normal" />
+              <CardView card={selectedCardToPlay} activeThemes={activeThemes} highlight={getSafeTheme(game.currentThemeId || pendingTheme, activeThemes)} size="normal" />
             </div>
 
             <div className="w-full max-w-sm bg-emerald-900/50 p-3 sm:p-5 rounded-[24px] sm:rounded-[32px] border border-emerald-500/20 shadow-2xl">
@@ -893,12 +935,12 @@ export default function App() {
                 {PREFECTURES
                   .filter(pref => pref.name.includes(searchPrefectureQuery))
                   .sort((a, b) => {
-                    const tid = safeTheme(game.currentThemeId || pendingTheme);
+                    const tid = getSafeTheme(game.currentThemeId || pendingTheme, activeThemes);
                     return (a[tid] || 0) - (b[tid] || 0); // 勝負属性の昇順でソート
                   })
                   .map(pref => {
                   const isTruth = pref.id === selectedCardToPlay.id;
-                  const tid = safeTheme(game.currentThemeId || pendingTheme);
+                  const tid = getSafeTheme(game.currentThemeId || pendingTheme, activeThemes);
                   const tdef = THEME_DEFS[tid];
                   return (
                     <button 
@@ -938,7 +980,7 @@ export default function App() {
               </h2>
               
               <div className="flex flex-col items-center gap-3 sm:gap-4 mb-6 sm:mb-10 w-full">
-                 <div className="flex justify-center scale-100 sm:scale-110 drop-shadow-xl"><CardView card={game.doubtResult.actual} activeThemes={['population', 'area']} highlight={game.doubtResult.themeUsed} size="normal" /></div>
+                 <div className="flex justify-center scale-100 sm:scale-110 drop-shadow-xl"><CardView card={game.doubtResult.actual} activeThemes={activeThemes} highlight={game.doubtResult.themeUsed} size="normal" /></div>
                  <div className="text-white bg-black/30 px-4 sm:px-6 py-1.5 sm:py-2 rounded-full font-black text-xs sm:text-sm shadow-inner border border-white/10 mt-2 sm:mt-4 flex items-center gap-1.5 sm:gap-2">
                    <span className="text-white/60 text-[8px] sm:text-[10px] uppercase">正解のカード</span> {game.doubtResult.actual?.name}
                  </div>
