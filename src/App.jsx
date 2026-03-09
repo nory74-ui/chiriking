@@ -196,7 +196,7 @@ export default function App() {
   const [joinRoomIdInput, setJoinRoomIdInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // ダウトモード用
+  // ダウトモード用：嘘の宣言モーダル
   const [showDeclareModal, setShowDeclareModal] = useState(false);
   const [selectedCardToPlay, setSelectedCardToPlay] = useState(null);
   const [searchPrefectureQuery, setSearchPrefectureQuery] = useState('');
@@ -241,6 +241,7 @@ export default function App() {
     setUser({ uid });
   }, []);
 
+  // リアルタイム同期
   useEffect(() => {
     if (!isOnline || !roomId || !user || !supabase) return;
 
@@ -268,6 +269,7 @@ export default function App() {
              if (pIdx !== -1) setMyPlayerIndex(pIdx);
           })
           .subscribe();
+
       } catch (err) {
         console.error(err);
       }
@@ -281,24 +283,26 @@ export default function App() {
     if (step === 'LOBBY' && roomData?.status === 'playing') setStep('BOARD');
   }, [step, roomData?.status]);
 
-  // ★ クラッシュの根源対策: updateGame 内での直接的なDB通信を分離し、安全に実行する
+  // ★ クラッシュの根源対策: ReactのレンダリングサイクルとDB通信を分離
   const updateGame = useCallback((updater) => {
+    let finalState = null;
+    
     setGame(prev => {
       if (!prev) return prev;
-      const newState = typeof updater === 'function' ? updater(prev) : updater;
-      
+      finalState = typeof updater === 'function' ? updater(prev) : updater;
+      return finalState;
+    });
+
+    // setGameの完了を待たずに、コールスタックを分けて安全にDBを更新
+    setTimeout(() => {
       const isO = isOnlineRef.current;
       const rId = roomIdRef.current;
       const sb = supabaseRef.current;
 
-      if (isO && rId && sb) {
-        // 非同期に逃がすことでReactのレンダリングサイクルとの衝突を防ぐ
-        setTimeout(() => {
-          sb.from('rooms').update({ game: newState }).eq('id', rId).catch(e => console.error("Sync Error", e));
-        }, 0);
+      if (isO && rId && sb && finalState) {
+        sb.from('rooms').update({ game: finalState }).eq('id', rId).catch(e => console.error("Sync Error", e));
       }
-      return newState;
-    });
+    }, 0);
   }, []);
 
   const createRoom = async () => {
@@ -470,19 +474,23 @@ export default function App() {
 
   useEffect(() => {
     if (!game) return;
+    
+    // ホストのみがタイマー処理を実行し、不要な発火を防ぐ
     const currentHostId = roomData?.host_uid;
-    const isMyTurnToHostLogic = !isOnline || currentHostId === user?.uid;
+    const isHostLogic = !isOnline || currentHostId === user?.uid;
 
-    if (isMyTurnToHostLogic) {
-      if (game.phase === 'RESOLVING') { 
-        const t = setTimeout(moveToNext, 1200); 
-        return () => clearTimeout(t); 
-      }
-      if (game.mode === 'doubt' && game.phase === 'DOUBT_WINDOW') {
-        const t = setTimeout(onAcceptDoubt, 4500); 
-        return () => clearTimeout(t); 
-      }
+    if (!isHostLogic) return;
+
+    let t;
+    if (game.phase === 'RESOLVING') { 
+      t = setTimeout(moveToNext, 1200); 
+    } else if (game.mode === 'doubt' && game.phase === 'DOUBT_WINDOW') {
+      t = setTimeout(onAcceptDoubt, 4500); 
     }
+
+    return () => {
+      if (t) clearTimeout(t);
+    };
   }, [game?.phase, game?.mode, isOnline, roomData?.host_uid, user?.uid, moveToNext, onAcceptDoubt]);
 
   // CPUロジック
@@ -908,7 +916,7 @@ export default function App() {
            
            <div className="flex-1 w-full overflow-x-auto overflow-y-hidden scrollbar-hide px-2">
              <div className="flex items-end space-x-1.5 sm:space-x-2 h-full mx-auto w-max min-w-full justify-center pb-2">
-               {cp?.hand.map(c => {
+               {cp?.hand?.map(c => {
                  const selectable = canPlayCard(c);
                  return (
                    <div key={c.id} className={`${game.turn === actualViewIndex && game.phase === 'WAITING' && selectable ? 'animate-[bounce_2s_infinite]' : ''}`} style={{animationDelay: `${Math.random()}s`}}>
@@ -923,7 +931,7 @@ export default function App() {
                    </div>
                  );
                })}
-               {cp?.hand.length === 0 && <div className="text-emerald-700/50 font-black italic text-xl sm:text-2xl h-full flex items-center justify-center uppercase tracking-widest w-full">No Cards</div>}
+               {(!cp?.hand || cp.hand.length === 0) && <div className="text-emerald-700/50 font-black italic text-xl sm:text-2xl h-full flex items-center justify-center uppercase tracking-widest w-full">No Cards</div>}
              </div>
            </div>
         </div>
