@@ -219,6 +219,7 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // 初期化と一時ID生成
   useEffect(() => {
     const checkScripts = () => {
       if (window.supabase && typeof document !== 'undefined') {
@@ -241,14 +242,14 @@ export default function App() {
     setUser({ uid });
   }, []);
 
-  // リアルタイム同期
+  // ★ 修正点: リアルタイム同期の確実な受信
   useEffect(() => {
     if (!isOnline || !roomId || !user || !supabase) return;
 
     let subscription;
     const fetchAndSubscribe = async () => {
       try {
-        const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single();
+        const { data, error } = await supabase.from('rooms').select('*').eq('id', roomId).single();
         if (data) {
           setRoomData(data);
           if (data.game) setGame(data.game);
@@ -258,16 +259,29 @@ export default function App() {
           if (pIdx !== -1) setMyPlayerIndex(pIdx);
         }
         
-        subscription = supabase.channel(`public:rooms:id=eq.${roomId}`)
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => {
-             const data = payload.new;
-             setRoomData(data);
-             if (data.game) setGame(data.game);
-             if (data.mode) setMode(data.mode);
-             if (data.active_themes) setActiveThemes(data.active_themes);
-             const pIdx = (data.players || []).findIndex(p => p.uid === user.uid);
-             if (pIdx !== -1) setMyPlayerIndex(pIdx);
-          })
+        // postgres_changes へのサブスクライブ
+        subscription = supabase
+          .channel(`room_${roomId}`)
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE', // 更新イベントのみを受け取る
+              schema: 'public',
+              table: 'rooms',
+              filter: `id=eq.${roomId}`
+            },
+            (payload) => {
+              const data = payload.new;
+              if (data) {
+                setRoomData(data);
+                if (data.game) setGame(data.game);
+                if (data.mode) setMode(data.mode);
+                if (data.active_themes) setActiveThemes(data.active_themes);
+                const pIdx = (data.players || []).findIndex(p => p.uid === user.uid);
+                if (pIdx !== -1) setMyPlayerIndex(pIdx);
+              }
+            }
+          )
           .subscribe();
 
       } catch (err) {
@@ -276,33 +290,41 @@ export default function App() {
     };
 
     fetchAndSubscribe();
-    return () => { if(subscription) supabase.removeChannel(subscription); };
-  }, [isOnline, roomId, user, supabase]);
+    
+    // クリーンアップ関数
+    return () => { 
+      if(subscription) {
+        supabase.removeChannel(subscription);
+      }
+    };
+  }, [isOnline, roomId, user, supabase]); // 依存関係を整理
 
   useEffect(() => {
     if (step === 'LOBBY' && roomData?.status === 'playing') setStep('BOARD');
   }, [step, roomData?.status]);
 
-  // ★ クラッシュの根源対策: ReactのレンダリングサイクルとDB通信を分離
+  // ★ 修正点: ReactのレンダリングサイクルとDB通信を分離し、ローカルを即時更新
   const updateGame = useCallback((updater) => {
-    let finalState = null;
-    
     setGame(prev => {
       if (!prev) return prev;
-      finalState = typeof updater === 'function' ? updater(prev) : updater;
-      return finalState;
-    });
-
-    // setGameの完了を待たずに、コールスタックを分けて安全にDBを更新
-    setTimeout(() => {
+      const newState = typeof updater === 'function' ? updater(prev) : updater;
+      
       const isO = isOnlineRef.current;
       const rId = roomIdRef.current;
       const sb = supabaseRef.current;
 
-      if (isO && rId && sb && finalState) {
-        sb.from('rooms').update({ game: finalState }).eq('id', rId).catch(e => console.error("Sync Error", e));
+      // DB送信は非同期で行い、画面のフリーズを防ぐ
+      if (isO && rId && sb) {
+        setTimeout(async () => {
+          try {
+            await sb.from('rooms').update({ game: newState }).eq('id', rId);
+          } catch(e) {
+            console.error("Sync Error", e);
+          }
+        }, 0);
       }
-    }, 0);
+      return newState;
+    });
   }, []);
 
   const createRoom = async () => {
@@ -428,7 +450,6 @@ export default function App() {
       
       const tid = getSafeTheme(prev.pending.themeAtPlay, activeThemes);
       
-      // ★ 安全な参照：場が空の場合はエラーを防ぐために 0 を設定
       let targetValue = 0;
       if (prev.fieldCards && prev.fieldCards.length > 0) {
         const topCard = prev.fieldCards[prev.fieldCards.length - 1];
@@ -474,23 +495,19 @@ export default function App() {
 
   useEffect(() => {
     if (!game) return;
-    
-    // ホストのみがタイマー処理を実行し、不要な発火を防ぐ
     const currentHostId = roomData?.host_uid;
-    const isHostLogic = !isOnline || currentHostId === user?.uid;
+    const isMyTurnToHostLogic = !isOnline || currentHostId === user?.uid;
 
-    if (!isHostLogic) return;
-
-    let t;
-    if (game.phase === 'RESOLVING') { 
-      t = setTimeout(moveToNext, 1200); 
-    } else if (game.mode === 'doubt' && game.phase === 'DOUBT_WINDOW') {
-      t = setTimeout(onAcceptDoubt, 4500); 
+    if (isMyTurnToHostLogic) {
+      if (game.phase === 'RESOLVING') { 
+        const t = setTimeout(moveToNext, 1200); 
+        return () => clearTimeout(t); 
+      }
+      if (game.mode === 'doubt' && game.phase === 'DOUBT_WINDOW') {
+        const t = setTimeout(onAcceptDoubt, 4500); 
+        return () => clearTimeout(t); 
+      }
     }
-
-    return () => {
-      if (t) clearTimeout(t);
-    };
   }, [game?.phase, game?.mode, isOnline, roomData?.host_uid, user?.uid, moveToNext, onAcceptDoubt]);
 
   // CPUロジック
@@ -540,7 +557,6 @@ export default function App() {
     return () => clearTimeout(t);
   }, [game?.turn, game?.phase, game?.mode, activeThemes, isOnline, roomData?.host_uid, user?.uid, updateGame]);
 
-  // 出せるカードかどうかの判定 (安全対策済み)
   const canPlayCard = (card) => {
     if (!game || !card) return false;
     const actualViewIndex = isOnline ? Math.max(0, myPlayerIndex) : 0;
