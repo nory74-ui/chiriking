@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Users, Map as MapIcon, BarChart, Sprout, Factory, 
   CloudRain, Activity, Play, Award, 
@@ -90,9 +90,10 @@ const THEME_DEFS = {
   agingRate: { id: 'agingRate', name: '高齢化率', unit: '%', icon: Activity, color: 'text-red-600' }
 };
 
-// 選択された属性群の中から安全に現在の属性を取得する
+// 安全に属性を取得するためのヘルパー関数
 const getSafeTheme = (theme, activeThemesList) => {
-  return activeThemesList.includes(theme) ? theme : activeThemesList[0];
+  const safeList = Array.isArray(activeThemesList) && activeThemesList.length > 0 ? activeThemesList : ['population', 'area'];
+  return safeList.includes(theme) ? theme : safeList[0];
 };
 
 // ==========================================
@@ -150,8 +151,7 @@ const CardView = ({ card, activeThemes, faceDown, selectable, onClick, highlight
   }
   
   if (!card) return null;
-  // 選択された2つの属性のみをカードに表示
-  const themes = (activeThemes || ['population', 'area']).map(id => THEME_DEFS[id]).filter(Boolean);
+  const themes = (Array.isArray(activeThemes) ? activeThemes : ['population', 'area']).map(id => THEME_DEFS[id]).filter(Boolean);
 
   return (
     <div 
@@ -183,7 +183,7 @@ export default function App() {
   const [step, setStep] = useState('MENU');
   const [mode, setMode] = useState('daifugo'); 
   const [playerCount, setPlayerCount] = useState(1);
-  const [activeThemes, setActiveThemes] = useState(['population', 'area']); // 今回使う2つの属性
+  const [activeThemes, setActiveThemes] = useState(['population', 'area']);
   const [game, setGame] = useState(null);
   const [pendingTheme, setPendingTheme] = useState('population');
   
@@ -196,22 +196,29 @@ export default function App() {
   const [joinRoomIdInput, setJoinRoomIdInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // ダウトモード用：嘘の宣言モーダル
+  // ダウトモード用
   const [showDeclareModal, setShowDeclareModal] = useState(false);
   const [selectedCardToPlay, setSelectedCardToPlay] = useState(null);
   const [searchPrefectureQuery, setSearchPrefectureQuery] = useState('');
 
-  // ウィンドウサイズの監視 (CSS変数 --vh の更新用)
+  // DB同期を安全に行うためのRef
+  const isOnlineRef = useRef(isOnline);
+  const roomIdRef = useRef(roomId);
+  const supabaseRef = useRef(supabase);
+
   useEffect(() => {
-    const handleResize = () => {
-      document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
-    };
+    isOnlineRef.current = isOnline;
+    roomIdRef.current = roomId;
+    supabaseRef.current = supabase;
+  }, [isOnline, roomId, supabase]);
+
+  useEffect(() => {
+    const handleResize = () => document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 初期化と一時ID生成
   useEffect(() => {
     const checkScripts = () => {
       if (window.supabase && typeof document !== 'undefined') {
@@ -234,20 +241,19 @@ export default function App() {
     setUser({ uid });
   }, []);
 
-  // リアルタイム同期
   useEffect(() => {
     if (!isOnline || !roomId || !user || !supabase) return;
 
     let subscription;
     const fetchAndSubscribe = async () => {
       try {
-        const { data, error } = await supabase.from('rooms').select('*').eq('id', roomId).single();
+        const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single();
         if (data) {
           setRoomData(data);
           if (data.game) setGame(data.game);
           if (data.mode) setMode(data.mode);
           if (data.active_themes) setActiveThemes(data.active_themes);
-          const pIdx = data.players.findIndex(p => p.uid === user.uid);
+          const pIdx = (data.players || []).findIndex(p => p.uid === user.uid);
           if (pIdx !== -1) setMyPlayerIndex(pIdx);
         }
         
@@ -258,11 +264,10 @@ export default function App() {
              if (data.game) setGame(data.game);
              if (data.mode) setMode(data.mode);
              if (data.active_themes) setActiveThemes(data.active_themes);
-             const pIdx = data.players.findIndex(p => p.uid === user.uid);
+             const pIdx = (data.players || []).findIndex(p => p.uid === user.uid);
              if (pIdx !== -1) setMyPlayerIndex(pIdx);
           })
           .subscribe();
-
       } catch (err) {
         console.error(err);
       }
@@ -276,16 +281,25 @@ export default function App() {
     if (step === 'LOBBY' && roomData?.status === 'playing') setStep('BOARD');
   }, [step, roomData?.status]);
 
+  // ★ クラッシュの根源対策: updateGame 内での直接的なDB通信を分離し、安全に実行する
   const updateGame = useCallback((updater) => {
     setGame(prev => {
       if (!prev) return prev;
       const newState = typeof updater === 'function' ? updater(prev) : updater;
-      if (isOnline && roomId && supabase) {
-        supabase.from('rooms').update({ game: newState }).eq('id', roomId).catch(e => console.error(e));
+      
+      const isO = isOnlineRef.current;
+      const rId = roomIdRef.current;
+      const sb = supabaseRef.current;
+
+      if (isO && rId && sb) {
+        // 非同期に逃がすことでReactのレンダリングサイクルとの衝突を防ぐ
+        setTimeout(() => {
+          sb.from('rooms').update({ game: newState }).eq('id', rId).catch(e => console.error("Sync Error", e));
+        }, 0);
       }
       return newState;
     });
-  }, [isOnline, roomId, supabase]);
+  }, []);
 
   const createRoom = async () => {
     if (!supabase) { setErrorMsg('接続準備中です...'); return; }
@@ -310,7 +324,7 @@ export default function App() {
       if (error || !data) { setErrorMsg("部屋が見つかりません"); return; }
       if (data.status !== 'waiting') { setErrorMsg("開始済みです"); return; }
       
-      const newPlayers = [...data.players, { uid: user.uid, name: nickname || `参加者${data.players.length + 1}` }];
+      const newPlayers = [...(data.players || []), { uid: user.uid, name: nickname || `参加者${(data.players || []).length + 1}` }];
       await supabase.from('rooms').update({ players: newPlayers }).eq('id', targetId);
       
       setRoomId(targetId);
@@ -339,7 +353,7 @@ export default function App() {
   const handleStartOnlineMatch = async () => {
     if (!roomData || roomData.host_uid !== user.uid || !supabase) return;
     const deck = [...PREFECTURES].sort(() => Math.random() - 0.5);
-    const joinedCount = roomData.players.length;
+    const joinedCount = (roomData.players || []).length;
     const players = Array.from({ length: 4 }).map((_, i) => ({
       id: i, name: i < joinedCount ? roomData.players[i].name : `CPU ${i - joinedCount + 1}`,
       isCpu: i >= joinedCount, hand: deck.slice(i * 5, (i + 1) * 5).sort((a,b) => a.id - b.id), passed: false
@@ -358,7 +372,7 @@ export default function App() {
       if (prev.mode === 'daifugo') {
         let loop = 0;
         while (prev.players[next]?.passed && loop < 4) { next = (next + 1) % 4; loop++; }
-        if (next === (prev.lastPlayedIdx || 0) && prev.players.filter(p => p.passed).length >= 3) {
+        if (next === (prev.lastPlayedIdx || 0) && (prev.players || []).filter(p => p.passed).length >= 3) {
           return { ...prev, turn: prev.lastPlayedIdx, fieldCards: [], currentThemeId: null, players: prev.players.map(p => ({ ...p, passed: false })), phase: 'WAITING', message: `場が流れました。親が属性を選択します。` };
         }
       }
@@ -371,7 +385,7 @@ export default function App() {
       const activeT = getSafeTheme(prev.currentThemeId || theme || pendingTheme, activeThemes);
       const newPlayers = prev.players.map((p, i) => i === idx ? { ...p, hand: p.hand.filter(c => c.id !== card.id) } : p);
       if (newPlayers[idx].hand.length === 0) return { ...prev, players: newPlayers, winner: newPlayers[idx], phase: 'OVER' };
-      return { ...prev, lastPlayedIdx: idx, players: newPlayers.map(p => ({ ...p, passed: false })), fieldCards: [...prev.fieldCards, card], currentThemeId: activeT, phase: 'RESOLVING', message: `${prev.players[idx].name}のカード！` };
+      return { ...prev, lastPlayedIdx: idx, players: newPlayers.map(p => ({ ...p, passed: false })), fieldCards: [...(prev.fieldCards || []), card], currentThemeId: activeT, phase: 'RESOLVING', message: `${prev.players[idx].name}のカード！` };
     });
   };
 
@@ -410,10 +424,13 @@ export default function App() {
       
       const tid = getSafeTheme(prev.pending.themeAtPlay, activeThemes);
       
+      // ★ 安全な参照：場が空の場合はエラーを防ぐために 0 を設定
       let targetValue = 0;
       if (prev.fieldCards && prev.fieldCards.length > 0) {
         const topCard = prev.fieldCards[prev.fieldCards.length - 1];
-        targetValue = topCard.declaredPref ? (topCard.declaredPref[tid] || 0) : (topCard[tid] || 0);
+        if (topCard) {
+          targetValue = topCard.declaredPref ? (topCard.declaredPref[tid] || 0) : (topCard[tid] || 0);
+        }
       }
       
       const actualValue = prev.pending.card[tid] || 0;
@@ -480,8 +497,8 @@ export default function App() {
       const cpuTheme = activeThemes[Math.floor(Math.random() * activeThemes.length)];
       if (game.mode === 'daifugo') {
         const tid = getSafeTheme(game.currentThemeId || cpuTheme, activeThemes);
-        const targetValue = game.fieldCards.length === 0 ? 0 : (game.fieldCards[game.fieldCards.length-1][tid] || 0);
-        const playableCards = p.hand.filter(c => (c[tid] || 0) >= targetValue).sort((a,b)=>(a[tid] || 0)-(b[tid] || 0));
+        const targetValue = (game.fieldCards && game.fieldCards.length > 0) ? (game.fieldCards[game.fieldCards.length-1][tid] || 0) : 0;
+        const playableCards = (p.hand || []).filter(c => (c[tid] || 0) >= targetValue).sort((a,b)=>(a[tid] || 0)-(b[tid] || 0));
         
         if (playableCards.length > 0) {
           handlePlayBasic(game.turn, playableCards[0], tid);
@@ -515,9 +532,9 @@ export default function App() {
     return () => clearTimeout(t);
   }, [game?.turn, game?.phase, game?.mode, activeThemes, isOnline, roomData?.host_uid, user?.uid, updateGame]);
 
-  // 出せるカードかどうかの判定
+  // 出せるカードかどうかの判定 (安全対策済み)
   const canPlayCard = (card) => {
-    if (!game) return false;
+    if (!game || !card) return false;
     const actualViewIndex = isOnline ? Math.max(0, myPlayerIndex) : 0;
     if (game.phase !== 'WAITING') return false;
     if (game.turn !== actualViewIndex) return false;
@@ -527,7 +544,9 @@ export default function App() {
     let targetValue = 0;
     if (game.fieldCards && game.fieldCards.length > 0) {
       const topCard = game.fieldCards[game.fieldCards.length - 1];
-      targetValue = topCard.declaredPref ? (topCard.declaredPref[tid] || 0) : (topCard[tid] || 0);
+      if (topCard) {
+        targetValue = topCard.declaredPref ? (topCard.declaredPref[tid] || 0) : (topCard[tid] || 0);
+      }
     }
     return (card[tid] || 0) >= targetValue;
   };
@@ -627,7 +646,6 @@ export default function App() {
     </div>
   );
 
-  // 新規追加：ゲームで使う属性を2つ選ぶ画面
   if (step === 'THEME') return (
     <div style={pageBaseStyle} className="p-6 text-white text-center">
       <div className="bg-emerald-800/80 border border-emerald-500/20 p-6 sm:p-10 rounded-[32px] sm:rounded-[48px] max-w-lg w-full shadow-2xl animate-fade-in backdrop-blur-md">
@@ -706,17 +724,17 @@ export default function App() {
         <div className="text-left mb-8 space-y-2 sm:space-y-3">
           <div className="flex justify-between items-center px-2 mb-2">
              <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Players</p>
-             <p className="text-[10px] font-black text-emerald-300 bg-emerald-950 px-3 py-1 rounded-full">{roomData?.players?.length} / {playerCount}</p>
+             <p className="text-[10px] font-black text-emerald-300 bg-emerald-950 px-3 py-1 rounded-full">{(roomData?.players || []).length} / {playerCount}</p>
           </div>
-          {roomData?.players?.map((p, i) => (
+          {(roomData?.players || []).map((p, i) => (
             <div key={p.uid} className="bg-emerald-600/20 border border-emerald-500/30 p-3 sm:p-4 rounded-2xl font-black flex items-center gap-3 text-emerald-100 shadow-sm"><User size={18} className="text-emerald-400"/> {p.name} {i === 0 && <span className="text-[9px] bg-emerald-500 text-emerald-950 px-2 py-0.5 rounded-full ml-auto shadow-sm">HOST</span>}</div>
           ))}
-          {Array.from({ length: Math.max(0, playerCount - (roomData?.players?.length || 0)) }).map((_, i) => (
+          {Array.from({ length: Math.max(0, playerCount - ((roomData?.players || []).length)) }).map((_, i) => (
             <div key={`empty-${i}`} className="border-2 border-dashed border-emerald-700/50 p-3 sm:p-4 rounded-2xl font-bold flex items-center gap-3 text-emerald-700/50 italic"><Plus size={18}/> 参加待ち...</div>
           ))}
         </div>
         {roomData?.host_uid === user?.uid ? (
-          <button onClick={handleStartOnlineMatch} disabled={roomData?.players?.length < playerCount} className={`w-full py-4 sm:py-5 rounded-3xl font-black text-lg sm:text-xl shadow-lg transition-all ${roomData?.players?.length >= playerCount ? 'bg-emerald-500 hover:bg-emerald-400 text-emerald-950 active:scale-95 shadow-[0_5px_15px_rgba(16,185,129,0.3)]' : 'bg-emerald-950 text-emerald-800 cursor-not-allowed'}`}>ゲーム開始</button>
+          <button onClick={handleStartOnlineMatch} disabled={(roomData?.players || []).length < playerCount} className={`w-full py-4 sm:py-5 rounded-3xl font-black text-lg sm:text-xl shadow-lg transition-all ${(roomData?.players || []).length >= playerCount ? 'bg-emerald-500 hover:bg-emerald-400 text-emerald-950 active:scale-95 shadow-[0_5px_15px_rgba(16,185,129,0.3)]' : 'bg-emerald-950 text-emerald-800 cursor-not-allowed'}`}>ゲーム開始</button>
         ) : (
           <p className="text-emerald-400 text-sm sm:text-base font-black animate-pulse bg-emerald-950/50 py-4 rounded-2xl border border-emerald-800">ホストの開始を待っています...</p>
         )}
@@ -830,11 +848,11 @@ export default function App() {
                    </div>
                    <div className="text-emerald-400 text-[10px] sm:text-xs font-black mb-1 sm:mb-2 mt-1 tracking-widest">{td.name} 勝負</div>
                    <div className="text-white text-lg sm:text-xl font-black italic flex items-baseline justify-center gap-2 drop-shadow-md">
-                     {game.fieldCards.length > 0 ? (currentMode === 'doubt' ? "???" : game.fieldCards[game.fieldCards.length-1].name) : "待機中"}
+                     {game.fieldCards && game.fieldCards.length > 0 ? (currentMode === 'doubt' ? "???" : game.fieldCards[game.fieldCards.length-1].name) : "待機中"}
                      <span className="text-yellow-400 font-mono text-4xl sm:text-5xl drop-shadow-[0_2px_10px_rgba(250,204,21,0.3)] leading-none ml-1 sm:ml-2">
-                       {game.fieldCards.length > 0 ? (currentMode === 'doubt' ? "?" : game.fieldCards[game.fieldCards.length-1][game.currentThemeId]) : "-"}
+                       {game.fieldCards && game.fieldCards.length > 0 ? (currentMode === 'doubt' ? "?" : game.fieldCards[game.fieldCards.length-1][game.currentThemeId]) : "-"}
                      </span>
-                     {game.fieldCards.length > 0 && <span className="text-[8px] sm:text-[10px] text-yellow-400/60 font-sans tracking-normal ml-1">{td.unit}</span>}
+                     {game.fieldCards && game.fieldCards.length > 0 && <span className="text-[8px] sm:text-[10px] text-yellow-400/60 font-sans tracking-normal ml-1">{td.unit}</span>}
                    </div>
                 </div>
               )
@@ -842,7 +860,7 @@ export default function App() {
             
             {/* 場のカード */}
             <div className="relative w-32 h-48 sm:w-40 sm:h-64 flex items-center justify-center mt-2 sm:mt-4">
-              {game.fieldCards.map((c, i) => (
+              {(game.fieldCards || []).map((c, i) => (
                 <div key={`field-${i}`} className="absolute transform transition-all duration-500 drop-shadow-2xl" style={{ rotate: `${(i*7)%30-15}deg`, zIndex: i }}>
                   <CardView card={c} activeThemes={activeThemes} highlight={game.currentThemeId} faceDown={currentMode === 'doubt'} declaredName={currentMode === 'doubt' ? (c.declaredPref?.name || PREFECTURES.find(p=>p.id===c.id)?.name) : null} size="normal" />
                 </div>
@@ -850,7 +868,7 @@ export default function App() {
               
               {/* ダウト判定中のカード描画 */}
               {game.phase === 'DOUBT_WINDOW' && game.pending && (
-                <div className="absolute transform transition-all duration-500 scale-110 -translate-y-4 shadow-2xl" style={{ rotate: `${(game.fieldCards.length*7)%30-15}deg`, zIndex: game.fieldCards.length + 10 }}>
+                <div className="absolute transform transition-all duration-500 scale-110 -translate-y-4 shadow-2xl" style={{ rotate: `${((game.fieldCards || []).length*7)%30-15}deg`, zIndex: (game.fieldCards || []).length + 10 }}>
                   <CardView card={game.pending.card} activeThemes={activeThemes} highlight={game.currentThemeId} faceDown={true} declaredName={game.pending.declaredPref?.name} size="normal" />
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none animate-pulse">
                      <div className="bg-red-600 text-white font-black px-4 sm:px-5 py-1.5 sm:py-2 rounded-full shadow-[0_0_20px_rgba(239,68,68,0.8)] text-sm sm:text-lg italic uppercase border-2 border-white flex items-center gap-1">
@@ -860,7 +878,7 @@ export default function App() {
                 </div>
               )}
               
-              {game.fieldCards.length === 0 && !game.pending && (
+              {(!game.fieldCards || game.fieldCards.length === 0) && !game.pending && (
                 <div className="w-28 h-48 sm:w-32 sm:h-56 border-2 sm:border-4 border-dashed border-emerald-700/30 rounded-xl sm:rounded-2xl flex items-center justify-center">
                   <span className="text-emerald-700/40 font-black italic text-xl sm:text-2xl uppercase tracking-widest">Field</span>
                 </div>
